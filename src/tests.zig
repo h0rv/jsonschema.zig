@@ -148,6 +148,37 @@ test "nested struct enum arrays slices" {
     );
 }
 
+test "pretty output" {
+    const User = struct {
+        name: []const u8,
+        age: u8 = 18,
+    };
+
+    try expectSchema(
+        User,
+        \\{
+        \\  "$schema": "https://json-schema.org/draft/2020-12/schema",
+        \\  "type": "object",
+        \\  "required": [
+        \\    "name",
+        \\    "age"
+        \\  ],
+        \\  "properties": {
+        \\    "name": {
+        \\      "type": "string"
+        \\    },
+        \\    "age": {
+        \\      "type": "integer",
+        \\      "default": 18
+        \\    }
+        \\  },
+        \\  "additionalProperties": false
+        \\}
+    ,
+        .{ .whitespace = .indent_2 },
+    );
+}
+
 test "options" {
     const User = struct {
         name: []const u8,

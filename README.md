@@ -128,6 +128,8 @@ pub const Options = struct {
     additional_properties: bool = false,
     require_all_fields: bool = true,
     emit_defaults: bool = true,
+    use_defs: bool = false,
+    whitespace: Whitespace = .minified,
 };
 ```
 
@@ -173,6 +175,16 @@ pub const jsonschema = .{
 ```
 
 Unknown metadata keys, metadata for missing fields, invalid metadata types, invalid defaults, and constraints on the wrong field type are compile errors.
+
+## Pretty output
+
+Use `.whitespace = .indent_2` for readable output:
+
+```zig
+const schema = try jsonschema.stringifyAlloc(User, allocator, .{
+    .whitespace = .indent_2,
+});
+```
 
 ## Scope
 
