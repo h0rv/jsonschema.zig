@@ -312,6 +312,41 @@ test "$defs recursive slice" {
     );
 }
 
+test "pointer to struct" {
+    const Address = struct { city: []const u8 };
+    const User = struct { address: *const Address };
+
+    try expectSchema(
+        User,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"address\"],\"properties\":{\"address\":{\"type\":\"object\",\"required\":[\"city\"],\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
+test "$defs pointer to struct" {
+    const Address = struct { city: []const u8 };
+    const User = struct { address: *const Address };
+
+    try expectSchema(
+        User,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"address\"],\"properties\":{\"address\":{\"$ref\":\"#/$defs/Address\"}},\"additionalProperties\":false,\"$defs\":{\"Address\":{\"type\":\"object\",\"required\":[\"city\"],\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}}}",
+        .{ .use_defs = true },
+    );
+}
+
+test "$defs recursive optional pointer" {
+    const Node = struct {
+        name: []const u8,
+        next: ?*const @This() = null,
+    };
+
+    try expectSchema(
+        Node,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"name\",\"next\"],\"properties\":{\"name\":{\"type\":\"string\"},\"next\":{\"anyOf\":[{\"$ref\":\"#/$defs/Node\"},{\"type\":\"null\"}],\"default\":null}},\"additionalProperties\":false,\"$defs\":{\"Node\":{\"type\":\"object\",\"required\":[\"name\",\"next\"],\"properties\":{\"name\":{\"type\":\"string\"},\"next\":{\"anyOf\":[{\"$ref\":\"#/$defs/Node\"},{\"type\":\"null\"}],\"default\":null}},\"additionalProperties\":false}}}",
+        .{ .use_defs = true },
+    );
+}
+
 test "$defs recursive optional slice" {
     const Node = struct {
         name: []const u8,

@@ -11,6 +11,10 @@ fn validateTypeInner(comptime T: type, comptime stack: []const type, comptime pa
             if (comptime isString(T)) return;
             switch (ptr.size) {
                 .slice => validateTypeInner(ptr.child, stack, path),
+                .one => switch (@typeInfo(ptr.child)) {
+                    .@"struct" => validateTypeInner(ptr.child, stack, path),
+                    else => unsupportedAt(T, path),
+                },
                 else => unsupportedAt(T, path),
             }
         },
@@ -46,6 +50,7 @@ fn validateJsonValueInner(comptime T: type, comptime stack: []const type) void {
                 .slice => validateJsonValueInner(ptr.child, stack),
                 .one => switch (@typeInfo(ptr.child)) {
                     .array => |arr| validateJsonValueInner(arr.child, stack),
+                    .@"struct" => validateJsonValueInner(ptr.child, stack),
                     else => unsupportedJsonValue(T),
                 },
                 else => unsupportedJsonValue(T),
@@ -125,8 +130,21 @@ pub fn isDefaultValueCompatible(comptime SchemaType: type, comptime value: anyty
         .float, .comptime_float => isNumber(ValueType) and isFinite(value),
         .pointer => |ptr| blk: {
             if (isString(SchemaType)) break :blk isString(ValueType);
-            if (ptr.size == .slice and isArrayValue(ValueType)) {
-                break :blk arrayValueCompatible(ptr.child, value);
+            switch (ptr.size) {
+                .slice => {
+                    if (isArrayValue(ValueType)) break :blk arrayValueCompatible(ptr.child, value);
+                },
+                .one => switch (@typeInfo(ptr.child)) {
+                    .@"struct" => switch (@typeInfo(ValueType)) {
+                        .pointer => |value_ptr| switch (value_ptr.size) {
+                            .one => break :blk isDefaultValueCompatible(ptr.child, value.*),
+                            else => {},
+                        },
+                        else => break :blk isDefaultValueCompatible(ptr.child, value),
+                    },
+                    else => {},
+                },
+                else => {},
             }
             break :blk false;
         },
@@ -262,6 +280,9 @@ fn objectValueCompatible(comptime SchemaType: type, comptime schema_struct: std.
     if (ValueType == SchemaType) return true;
 
     const value_info = @typeInfo(ValueType);
+    if (value_info == .pointer and value_info.pointer.size == .one) {
+        return objectValueCompatible(SchemaType, schema_struct, value.*);
+    }
     if (value_info != .@"struct" or value_info.@"struct".is_tuple) return false;
 
     inline for (schema_struct.fields) |schema_field| {

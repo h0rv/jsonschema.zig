@@ -94,25 +94,45 @@ fn inferredSchema(comptime T: type, writer: anytype, options: Options, obj: *Obj
             if (comptime reflect.isString(T)) {
                 try obj.field(writer, "type");
                 try writeString(writer, "string");
-            } else if (ptr.size == .slice) {
-                try obj.field(writer, "type");
-                try writeString(writer, "array");
-                try obj.field(writer, "items");
-                if (options.use_defs and comptime isDefStruct(ptr.child)) {
-                    try refSchema(ptr.child, writer);
-                } else {
-                    try schema(ptr.child, writer, options, .{});
-                }
-            } else {
-                reflect.unsupported(T);
+            } else switch (ptr.size) {
+                .slice => {
+                    try obj.field(writer, "type");
+                    try writeString(writer, "array");
+                    try obj.field(writer, "items");
+                    if (options.use_defs) {
+                        if (comptime directRefType(ptr.child)) |Def| {
+                            try refSchema(Def, writer);
+                        } else {
+                            try schema(ptr.child, writer, options, .{});
+                        }
+                    } else {
+                        try schema(ptr.child, writer, options, .{});
+                    }
+                },
+                .one => switch (@typeInfo(ptr.child)) {
+                    .@"struct" => {
+                        if (options.use_defs) {
+                            try refSchema(ptr.child, writer);
+                        } else {
+                            try emitTypeMetadata(ptr.child, writer, obj, options);
+                            try inferredSchema(ptr.child, writer, options, obj);
+                        }
+                    },
+                    else => reflect.unsupported(T),
+                },
+                else => reflect.unsupported(T),
             }
         },
         .array => |arr| {
             try obj.field(writer, "type");
             try writeString(writer, "array");
             try obj.field(writer, "items");
-            if (options.use_defs and comptime isDefStruct(arr.child)) {
-                try refSchema(arr.child, writer);
+            if (options.use_defs) {
+                if (comptime directRefType(arr.child)) |Def| {
+                    try refSchema(Def, writer);
+                } else {
+                    try schema(arr.child, writer, options, .{});
+                }
             } else {
                 try schema(arr.child, writer, options, .{});
             }
@@ -120,8 +140,12 @@ fn inferredSchema(comptime T: type, writer: anytype, options: Options, obj: *Obj
         .optional => |opt| {
             try obj.field(writer, "anyOf");
             try writer.writeAll("[");
-            if (options.use_defs and comptime isDefStruct(opt.child)) {
-                try refSchema(opt.child, writer);
+            if (options.use_defs) {
+                if (comptime directRefType(opt.child)) |Def| {
+                    try refSchema(Def, writer);
+                } else {
+                    try schema(opt.child, writer, options, .{});
+                }
             } else {
                 try schema(opt.child, writer, options, .{});
             }
@@ -177,22 +201,36 @@ fn inferredSchema(comptime T: type, writer: anytype, options: Options, obj: *Obj
 fn fieldSchema(comptime Parent: type, comptime field: std.builtin.Type.StructField, writer: anytype, options: Options) anyerror!void {
     if (comptime meta.hasFieldMetadata(Parent, field.name)) {
         const field_meta = meta.fieldMetadata(Parent, field.name);
-        if (options.use_defs and comptime isDefStruct(field.type)) {
-            if (field.defaultValue()) |default_value| {
-                try refSchemaWithZigDefault(field.type, writer, options, field_meta, default_value);
-            } else {
-                try refSchemaWithMeta(field.type, writer, options, field_meta);
+        if (options.use_defs) {
+            if (comptime directRefType(field.type)) |Def| {
+                if (field.defaultValue()) |default_value| {
+                    try refSchemaWithZigDefault(Def, writer, options, field_meta, default_value);
+                } else {
+                    try refSchemaWithMeta(Def, writer, options, field_meta);
+                }
+                return;
             }
-        } else if (field.defaultValue()) |default_value| {
+        }
+
+        if (field.defaultValue()) |default_value| {
             try schemaWithZigDefault(field.type, writer, options, field_meta, default_value);
         } else {
             try schema(field.type, writer, options, field_meta);
         }
-    } else if (options.use_defs and comptime isDefStruct(field.type)) {
+    } else if (options.use_defs) {
+        if (comptime directRefType(field.type)) |Def| {
+            if (field.defaultValue()) |default_value| {
+                try refSchemaWithZigDefault(Def, writer, options, .{}, default_value);
+            } else {
+                try refSchema(Def, writer);
+            }
+            return;
+        }
+
         if (field.defaultValue()) |default_value| {
-            try refSchemaWithZigDefault(field.type, writer, options, .{}, default_value);
+            try schemaWithZigDefault(field.type, writer, options, .{}, default_value);
         } else {
-            try refSchema(field.type, writer);
+            try schema(field.type, writer, options, .{});
         }
     } else if (field.defaultValue()) |default_value| {
         try schemaWithZigDefault(field.type, writer, options, .{}, default_value);
@@ -271,6 +309,21 @@ fn defType(comptime T: type) ?type {
         .array => |arr| defType(arr.child),
         .pointer => |ptr| switch (ptr.size) {
             .slice => defType(ptr.child),
+            .one => directRefType(T),
+            else => null,
+        },
+        else => null,
+    };
+}
+
+fn directRefType(comptime T: type) ?type {
+    return switch (@typeInfo(T)) {
+        .@"struct" => if (isDefStruct(T)) T else null,
+        .pointer => |ptr| switch (ptr.size) {
+            .one => switch (@typeInfo(ptr.child)) {
+                .@"struct" => if (isDefStruct(ptr.child)) ptr.child else null,
+                else => null,
+            },
             else => null,
         },
         else => null,
@@ -314,6 +367,7 @@ fn collectDefsFromField(comptime T: type, comptime defs: []const type, comptime 
         .array => |arr| collectDefsFromField(arr.child, defs, stack),
         .pointer => |ptr| switch (ptr.size) {
             .slice => collectDefsFromField(ptr.child, defs, stack),
+            .one => collectDefsFromField(ptr.child, defs, stack),
             else => defs,
         },
         else => defs,
@@ -471,6 +525,7 @@ pub fn writeJsonValue(comptime T: type, writer: anytype, value: T) anyerror!void
                         }
                         try writer.writeAll("]");
                     },
+                    .@"struct" => try writeJsonValue(ptr.child, writer, value.*),
                     else => reflect.unsupportedJsonValue(T),
                 },
                 else => reflect.unsupportedJsonValue(T),
