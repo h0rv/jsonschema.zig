@@ -281,6 +281,24 @@ test "$defs preserve ref field metadata and defaults" {
     );
 }
 
+test "$defs disambiguate same short names" {
+    const A = struct {
+        pub const Address = struct { city: []const u8 };
+    };
+    const B = struct {
+        pub const Address = struct { zip: u32 };
+    };
+    const User = struct {
+        home: A.Address,
+        work: B.Address,
+    };
+
+    const schema = try jsonschema.stringifyAlloc(User, std.testing.allocator, .{ .use_defs = true });
+    defer std.testing.allocator.free(schema);
+    try std.testing.expect(std.mem.indexOf(u8, schema, "A.Address") != null);
+    try std.testing.expect(std.mem.indexOf(u8, schema, "B.Address") != null);
+}
+
 test "$defs recursive slice" {
     const Node = struct {
         name: []const u8,

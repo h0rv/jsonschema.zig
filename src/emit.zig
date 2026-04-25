@@ -260,7 +260,7 @@ fn refSchemaWithZigDefault(
 fn emitRefField(comptime T: type, writer: anytype, obj: *Object) !void {
     try obj.field(writer, "$ref");
     try writer.writeAll("\"#/$defs/");
-    try writer.writeAll(defName(T));
+    try writeJsonPointerSegmentContent(writer, defName(T));
     try writer.writeAll("\"");
 }
 
@@ -339,10 +339,44 @@ fn containsType(comptime haystack: []const type, comptime needle: type) bool {
 
 fn defName(comptime T: type) []const u8 {
     const full = @typeName(T);
-    if (std.mem.lastIndexOfScalar(u8, full, '.')) |index| {
-        return full[index + 1 ..];
+    const last_dot = comptime lastDot(full) orelse return full;
+    const name = full[last_dot + 1 ..];
+    const before_name = full[0..last_dot];
+    const prev_dot = comptime lastDot(before_name) orelse return name;
+    const parent = before_name[prev_dot + 1 ..];
+    if (parent.len > 0 and parent[0] == '$') return name;
+    return parent ++ "." ++ name;
+}
+
+fn lastDot(comptime value: []const u8) ?usize {
+    var result: ?usize = null;
+    for (value, 0..) |byte, i| {
+        if (byte == '.') result = i;
     }
-    return full;
+    return result;
+}
+
+fn writeJsonPointerSegmentContent(writer: anytype, value: []const u8) !void {
+    for (value) |byte| {
+        switch (byte) {
+            '~' => try writer.writeAll("~0"),
+            '/' => try writer.writeAll("~1"),
+            '"' => try writer.writeAll("\\\""),
+            '\\' => try writer.writeAll("\\\\"),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            0x08 => try writer.writeAll("\\b"),
+            0x0c => try writer.writeAll("\\f"),
+            else => {
+                if (byte < 0x20) {
+                    try writer.print("\\u{x:0>4}", .{byte});
+                } else {
+                    try writer.writeByte(byte);
+                }
+            },
+        }
+    }
 }
 
 fn emitTypeMetadata(comptime T: type, writer: anytype, obj: *Object, options: Options) !void {

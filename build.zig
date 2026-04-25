@@ -177,16 +177,6 @@ pub fn build(b: *std.Build) void {
         "tests/compile_errors/examples_incompatible.zig",
         "error: jsonschema field metadata at 'examples_incompatible.Bad.age' key 'examples' contains value that does not match u8",
     );
-    addCompileErrorTest(
-        b,
-        test_step,
-        mod,
-        target,
-        optimize,
-        "defs_name_collision",
-        "tests/compile_errors/defs_name_collision.zig",
-        "error: jsonschema $defs name collision: 'Address'",
-    );
 }
 
 fn addCompileErrorTest(
