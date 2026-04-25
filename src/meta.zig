@@ -78,9 +78,10 @@ fn validateFieldsMetadata(comptime T: type, comptime fields_meta: anytype) void 
         validateMetadataValueTypes(field_meta, &field_annotation_keys, "field metadata");
         validateMetadataValueTypes(field_meta, &field_default_key, "field metadata");
         validateMetadataValueTypes(field_meta, &field_constraint_keys, "field metadata");
-        validateFieldConstraintCompatibility(FieldType, field_meta, field_name);
-        validateFieldDefaultCompatibility(FieldType, field_meta, field_name);
-        validateExamplesCompatibility(FieldType, field_meta, "field metadata");
+        const field_path = @typeName(T) ++ "." ++ field_name;
+        validateFieldConstraintCompatibility(FieldType, field_meta, field_path);
+        validateFieldDefaultCompatibility(FieldType, field_meta, field_path);
+        validateExamplesCompatibility(FieldType, field_meta, "field metadata at '" ++ field_path ++ "'");
     }
 }
 
@@ -137,7 +138,7 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
     }
 }
 
-fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field_meta: anytype, comptime field_name: []const u8) void {
+fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field_meta: anytype, comptime field_path: []const u8) void {
     const Base = reflect.optionalChild(FieldType);
 
     inline for (&field_constraint_keys) |key| {
@@ -148,26 +149,26 @@ fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field
                 std.mem.eql(u8, key, "exclusiveMaximum") or
                 std.mem.eql(u8, key, "multipleOf"))
             {
-                if (!reflect.isNumber(Base)) @compileError("jsonschema numeric constraint '" ++ key ++ "' on non-numeric field '" ++ field_name ++ "'");
+                if (!reflect.isNumber(Base)) @compileError("jsonschema numeric constraint '" ++ key ++ "' on non-numeric field '" ++ field_path ++ "'");
             } else if (std.mem.eql(u8, key, "minLength") or
                 std.mem.eql(u8, key, "maxLength") or
                 std.mem.eql(u8, key, "pattern") or
                 std.mem.eql(u8, key, "format"))
             {
-                if (!reflect.isString(Base)) @compileError("jsonschema string constraint '" ++ key ++ "' on non-string field '" ++ field_name ++ "'");
+                if (!reflect.isString(Base)) @compileError("jsonschema string constraint '" ++ key ++ "' on non-string field '" ++ field_path ++ "'");
             } else if (std.mem.eql(u8, key, "minItems") or
                 std.mem.eql(u8, key, "maxItems") or
                 std.mem.eql(u8, key, "uniqueItems"))
             {
-                if (!reflect.isArrayLike(Base)) @compileError("jsonschema array constraint '" ++ key ++ "' on non-array field '" ++ field_name ++ "'");
+                if (!reflect.isArrayLike(Base)) @compileError("jsonschema array constraint '" ++ key ++ "' on non-array field '" ++ field_path ++ "'");
             }
         }
     }
 }
 
-fn validateFieldDefaultCompatibility(comptime FieldType: type, comptime field_meta: anytype, comptime field_name: []const u8) void {
+fn validateFieldDefaultCompatibility(comptime FieldType: type, comptime field_meta: anytype, comptime field_path: []const u8) void {
     if (@hasField(@TypeOf(field_meta), "default")) {
-        reflect.validateDefaultCompatible(FieldType, field_meta.default, field_name);
+        reflect.validateDefaultCompatible(FieldType, field_meta.default, field_path);
     }
 }
 

@@ -1,34 +1,35 @@
 const std = @import("std");
 
 pub fn validateType(comptime T: type) void {
-    validateTypeInner(T, &[_]type{});
+    validateTypeInner(T, &[_]type{}, @typeName(T));
 }
 
-fn validateTypeInner(comptime T: type, comptime stack: []const type) void {
+fn validateTypeInner(comptime T: type, comptime stack: []const type, comptime path: []const u8) void {
     switch (@typeInfo(T)) {
         .bool, .int, .comptime_int, .float, .comptime_float => {},
         .pointer => |ptr| {
             if (comptime isString(T)) return;
             switch (ptr.size) {
-                .slice => validateTypeInner(ptr.child, stack),
-                else => unsupported(T),
+                .slice => validateTypeInner(ptr.child, stack, path),
+                else => unsupportedAt(T, path),
             }
         },
-        .array => |arr| validateTypeInner(arr.child, stack),
-        .optional => |opt| validateTypeInner(opt.child, stack),
+        .array => |arr| validateTypeInner(arr.child, stack, path),
+        .optional => |opt| validateTypeInner(opt.child, stack, path),
         .@"enum" => {},
         .@"struct" => |st| {
-            if (st.is_tuple) unsupported(T);
+            if (st.is_tuple) unsupportedAt(T, path);
             if (containsType(stack, T)) return;
             const next_stack = stack ++ [_]type{T};
             inline for (st.fields) |field| {
-                validateTypeInner(field.type, next_stack);
+                const field_path = path ++ "." ++ field.name;
+                validateTypeInner(field.type, next_stack, field_path);
                 if (field.defaultValue()) |default_value| {
-                    validateDefaultCompatible(field.type, default_value, field.name);
+                    validateDefaultCompatible(field.type, default_value, field_path);
                 }
             }
         },
-        else => unsupported(T),
+        else => unsupportedAt(T, path),
     }
 }
 
@@ -87,10 +88,10 @@ pub fn validateExamples(comptime T: type) void {
     }
 }
 
-pub fn validateDefaultCompatible(comptime FieldType: type, comptime default_value: anytype, comptime field_name: []const u8) void {
+pub fn validateDefaultCompatible(comptime FieldType: type, comptime default_value: anytype, comptime path: []const u8) void {
     validateJsonValue(@TypeOf(default_value));
     if (!isDefaultValueCompatible(FieldType, default_value)) {
-        @compileError("jsonschema default for field '" ++ field_name ++ "' does not match field type");
+        @compileError("jsonschema default at '" ++ path ++ "' does not match field type");
     }
 }
 
@@ -311,6 +312,10 @@ fn containsType(comptime haystack: []const type, comptime needle: type) bool {
 
 pub fn unsupported(comptime T: type) noreturn {
     @compileError("unsupported jsonschema Zig type: " ++ @typeName(T));
+}
+
+fn unsupportedAt(comptime T: type, comptime path: []const u8) noreturn {
+    @compileError("unsupported jsonschema Zig type at '" ++ path ++ "': " ++ @typeName(T));
 }
 
 pub fn unsupportedJsonValue(comptime T: type) noreturn {

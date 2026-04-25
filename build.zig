@@ -95,7 +95,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         "constraint_wrong_type",
         "tests/compile_errors/constraint_wrong_type.zig",
-        "error: jsonschema numeric constraint 'minimum' on non-numeric field 'name'",
+        "error: jsonschema numeric constraint 'minimum' on non-numeric field 'constraint_wrong_type.Bad.name'",
     );
     addCompileErrorTest(
         b,
@@ -105,7 +105,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         "format_on_non_string",
         "tests/compile_errors/format_on_non_string.zig",
-        "error: jsonschema string constraint 'format' on non-string field 'age'",
+        "error: jsonschema string constraint 'format' on non-string field 'format_on_non_string.Bad.age'",
     );
     addCompileErrorTest(
         b,
@@ -125,7 +125,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         "unsupported_type",
         "tests/compile_errors/unsupported_type.zig",
-        "error: unsupported jsonschema Zig type: fn () void",
+        "error: unsupported jsonschema Zig type at 'unsupported_type.Bad.callback': fn () void",
     );
     addCompileErrorTest(
         b,
@@ -135,7 +135,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         "default_wrong_type",
         "tests/compile_errors/default_wrong_type.zig",
-        "error: jsonschema default for field 'age' does not match field type",
+        "error: jsonschema default at 'default_wrong_type.Bad.age' does not match field type",
     );
     addCompileErrorTest(
         b,
@@ -145,7 +145,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         "nonfinite_default",
         "tests/compile_errors/nonfinite_default.zig",
-        "error: jsonschema default for field 'score' does not match field type",
+        "error: jsonschema default at 'nonfinite_default.Bad.score' does not match field type",
     );
     addCompileErrorTest(
         b,
@@ -155,7 +155,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         "enum_default_unknown",
         "tests/compile_errors/enum_default_unknown.zig",
-        "error: jsonschema default for field 'role' does not match field type",
+        "error: jsonschema default at 'enum_default_unknown.Bad.role' does not match field type",
     );
     addCompileErrorTest(
         b,
@@ -165,7 +165,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         "object_default_missing_field",
         "tests/compile_errors/object_default_missing_field.zig",
-        "error: jsonschema default for field 'address' does not match field type",
+        "error: jsonschema default at 'object_default_missing_field.Bad.address' does not match field type",
     );
     addCompileErrorTest(
         b,
@@ -175,7 +175,7 @@ pub fn build(b: *std.Build) void {
         optimize,
         "examples_incompatible",
         "tests/compile_errors/examples_incompatible.zig",
-        "error: jsonschema field metadata key 'examples' contains value that does not match u8",
+        "error: jsonschema field metadata at 'examples_incompatible.Bad.age' key 'examples' contains value that does not match u8",
     );
     addCompileErrorTest(
         b,
