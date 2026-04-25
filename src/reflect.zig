@@ -1,23 +1,28 @@
 const std = @import("std");
 
 pub fn validateType(comptime T: type) void {
+    validateTypeInner(T, &[_]type{});
+}
+
+fn validateTypeInner(comptime T: type, comptime stack: []const type) void {
     switch (@typeInfo(T)) {
         .bool, .int, .comptime_int, .float, .comptime_float => {},
         .pointer => |ptr| {
             if (comptime isString(T)) return;
-            if (ptr.size == .slice) {
-                validateType(ptr.child);
-                return;
+            switch (ptr.size) {
+                .slice => validateTypeInner(ptr.child, stack),
+                else => unsupported(T),
             }
-            unsupported(T);
         },
-        .array => |arr| validateType(arr.child),
-        .optional => |opt| validateType(opt.child),
+        .array => |arr| validateTypeInner(arr.child, stack),
+        .optional => |opt| validateTypeInner(opt.child, stack),
         .@"enum" => {},
         .@"struct" => |st| {
             if (st.is_tuple) unsupported(T);
+            if (containsType(stack, T)) return;
+            const next_stack = stack ++ [_]type{T};
             inline for (st.fields) |field| {
-                validateType(field.type);
+                validateTypeInner(field.type, next_stack);
                 if (field.defaultValue()) |default_value| {
                     validateDefaultCompatible(field.type, default_value, field.name);
                 }
@@ -28,23 +33,31 @@ pub fn validateType(comptime T: type) void {
 }
 
 pub fn validateJsonValue(comptime T: type) void {
+    validateJsonValueInner(T, &[_]type{});
+}
+
+fn validateJsonValueInner(comptime T: type, comptime stack: []const type) void {
     switch (@typeInfo(T)) {
         .bool, .int, .comptime_int, .float, .comptime_float, .null => {},
         .pointer => |ptr| {
             if (comptime isString(T)) return;
             switch (ptr.size) {
-                .slice => validateJsonValue(ptr.child),
+                .slice => validateJsonValueInner(ptr.child, stack),
                 .one => switch (@typeInfo(ptr.child)) {
-                    .array => |arr| validateJsonValue(arr.child),
+                    .array => |arr| validateJsonValueInner(arr.child, stack),
                     else => unsupportedJsonValue(T),
                 },
                 else => unsupportedJsonValue(T),
             }
         },
-        .array => |arr| validateJsonValue(arr.child),
-        .optional => |opt| validateJsonValue(opt.child),
+        .array => |arr| validateJsonValueInner(arr.child, stack),
+        .optional => |opt| validateJsonValueInner(opt.child, stack),
         .@"enum" => {},
-        .@"struct" => |st| inline for (st.fields) |field| validateJsonValue(field.type),
+        .@"struct" => |st| {
+            if (containsType(stack, T)) return;
+            const next_stack = stack ++ [_]type{T};
+            inline for (st.fields) |field| validateJsonValueInner(field.type, next_stack);
+        },
         else => unsupportedJsonValue(T),
     }
 }
@@ -285,6 +298,13 @@ fn stringValue(comptime value: anytype) []const u8 {
 pub fn contains(comptime haystack: []const []const u8, comptime needle: []const u8) bool {
     inline for (haystack) |item| {
         if (std.mem.eql(u8, item, needle)) return true;
+    }
+    return false;
+}
+
+fn containsType(comptime haystack: []const type, comptime needle: type) bool {
+    inline for (haystack) |item| {
+        if (item == needle) return true;
     }
     return false;
 }

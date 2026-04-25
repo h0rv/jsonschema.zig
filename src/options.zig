@@ -8,4 +8,5 @@ pub const Options = struct {
     additional_properties: bool = false,
     require_all_fields: bool = true,
     emit_defaults: bool = true,
+    use_defs: bool = false,
 };

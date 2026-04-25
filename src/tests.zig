@@ -107,6 +107,24 @@ test "numeric constraints" {
     );
 }
 
+test "nested struct type metadata" {
+    const Address = struct {
+        city: []const u8,
+
+        pub const jsonschema = .{
+            .title = "Address",
+            .description = "A mailing address.",
+        };
+    };
+    const User = struct { address: Address };
+
+    try expectSchema(
+        User,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"address\"],\"properties\":{\"address\":{\"title\":\"Address\",\"description\":\"A mailing address.\",\"type\":\"object\",\"required\":[\"city\"],\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
 test "nested struct enum arrays slices" {
     const Role = enum { admin, user };
     const Address = struct { city: []const u8 };
@@ -166,6 +184,107 @@ test "metadata defaults for enum and nested object" {
     try expectSchema(
         User,
         "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"role\",\"address\"],\"properties\":{\"role\":{\"type\":\"string\",\"enum\":[\"admin\",\"user\"],\"default\":\"admin\"},\"address\":{\"type\":\"object\",\"required\":[\"city\",\"zip\"],\"properties\":{\"city\":{\"type\":\"string\"},\"zip\":{\"type\":\"integer\"}},\"additionalProperties\":false,\"default\":{\"city\":\"Philadelphia\",\"zip\":19104}}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
+test "$defs for nested structs" {
+    const Address = struct { city: []const u8 };
+    const User = struct {
+        name: []const u8,
+        address: Address,
+        previous: ?Address = null,
+        history: []const Address,
+    };
+
+    try expectSchema(
+        User,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"name\",\"address\",\"previous\",\"history\"],\"properties\":{\"name\":{\"type\":\"string\"},\"address\":{\"$ref\":\"#/$defs/Address\"},\"previous\":{\"anyOf\":[{\"$ref\":\"#/$defs/Address\"},{\"type\":\"null\"}],\"default\":null},\"history\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Address\"}}},\"additionalProperties\":false,\"$defs\":{\"Address\":{\"type\":\"object\",\"required\":[\"city\"],\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}}}",
+        .{ .use_defs = true },
+    );
+}
+
+test "$defs include nested type metadata" {
+    const Address = struct {
+        city: []const u8,
+
+        pub const jsonschema = .{ .title = "Address" };
+    };
+    const User = struct { address: Address };
+
+    try expectSchema(
+        User,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"address\"],\"properties\":{\"address\":{\"$ref\":\"#/$defs/Address\"}},\"additionalProperties\":false,\"$defs\":{\"Address\":{\"title\":\"Address\",\"type\":\"object\",\"required\":[\"city\"],\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}}}",
+        .{ .use_defs = true },
+    );
+}
+
+test "$defs include transitive nested structs" {
+    const Country = struct { code: []const u8 };
+    const Address = struct { country: Country };
+    const User = struct { address: Address };
+
+    try expectSchema(
+        User,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"address\"],\"properties\":{\"address\":{\"$ref\":\"#/$defs/Address\"}},\"additionalProperties\":false,\"$defs\":{\"Address\":{\"type\":\"object\",\"required\":[\"country\"],\"properties\":{\"country\":{\"$ref\":\"#/$defs/Country\"}},\"additionalProperties\":false},\"Country\":{\"type\":\"object\",\"required\":[\"code\"],\"properties\":{\"code\":{\"type\":\"string\"}},\"additionalProperties\":false}}}",
+        .{ .use_defs = true },
+    );
+}
+
+test "$defs preserve ref field metadata and defaults" {
+    const Address = struct { city: []const u8 };
+    const User = struct {
+        address: Address = .{ .city = "Philadelphia" },
+
+        pub const jsonschema = .{
+            .fields = .{
+                .address = .{ .description = "Mailing address." },
+            },
+        };
+    };
+
+    try expectSchema(
+        User,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"address\"],\"properties\":{\"address\":{\"$ref\":\"#/$defs/Address\",\"description\":\"Mailing address.\",\"default\":{\"city\":\"Philadelphia\"}}},\"additionalProperties\":false,\"$defs\":{\"Address\":{\"type\":\"object\",\"required\":[\"city\"],\"properties\":{\"city\":{\"type\":\"string\"}},\"additionalProperties\":false}}}",
+        .{ .use_defs = true },
+    );
+}
+
+test "$defs recursive slice" {
+    const Node = struct {
+        name: []const u8,
+        children: []const @This(),
+    };
+
+    try expectSchema(
+        Node,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"name\",\"children\"],\"properties\":{\"name\":{\"type\":\"string\"},\"children\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Node\"}}},\"additionalProperties\":false,\"$defs\":{\"Node\":{\"type\":\"object\",\"required\":[\"name\",\"children\"],\"properties\":{\"name\":{\"type\":\"string\"},\"children\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Node\"}}},\"additionalProperties\":false}}}",
+        .{ .use_defs = true },
+    );
+}
+
+test "$defs recursive optional slice" {
+    const Node = struct {
+        name: []const u8,
+        children: ?[]const @This() = null,
+    };
+
+    try expectSchema(
+        Node,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"name\",\"children\"],\"properties\":{\"name\":{\"type\":\"string\"},\"children\":{\"anyOf\":[{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Node\"}},{\"type\":\"null\"}],\"default\":null}},\"additionalProperties\":false,\"$defs\":{\"Node\":{\"type\":\"object\",\"required\":[\"name\",\"children\"],\"properties\":{\"name\":{\"type\":\"string\"},\"children\":{\"anyOf\":[{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Node\"}},{\"type\":\"null\"}],\"default\":null}},\"additionalProperties\":false}}}",
+        .{ .use_defs = true },
+    );
+}
+
+test "sentinel strings and string literals" {
+    const Text = struct {
+        sentinel: [:0]const u8,
+        literal: *const [5:0]u8 = "hello",
+    };
+
+    try expectSchema(
+        Text,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"sentinel\",\"literal\"],\"properties\":{\"sentinel\":{\"type\":\"string\"},\"literal\":{\"type\":\"string\",\"default\":\"hello\"}},\"additionalProperties\":false}",
         .{},
     );
 }
