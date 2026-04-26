@@ -75,7 +75,6 @@
         "build.zig.zon",
         "src",
         "tests",
-        "docs",
         "LICENSE",
         "README.md",
     },

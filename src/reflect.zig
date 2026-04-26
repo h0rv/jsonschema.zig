@@ -12,7 +12,7 @@ fn validateTypeInner(comptime T: type, comptime stack: []const type, comptime pa
             switch (ptr.size) {
                 .slice => validateTypeInner(ptr.child, stack, path),
                 .one => switch (@typeInfo(ptr.child)) {
-                    .@"struct" => validateTypeInner(ptr.child, stack, path),
+                    .@"struct", .@"union" => validateTypeInner(ptr.child, stack, path),
                     else => unsupportedAt(T, path),
                 },
                 else => unsupportedAt(T, path),
@@ -21,12 +21,29 @@ fn validateTypeInner(comptime T: type, comptime stack: []const type, comptime pa
         .array => |arr| validateTypeInner(arr.child, stack, path),
         .optional => |opt| validateTypeInner(opt.child, stack, path),
         .@"enum" => {},
-        .@"struct" => |st| {
-            if (st.is_tuple) unsupportedAt(T, path);
+        .@"union" => |un| {
+            if (un.tag_type == null) @compileError("jsonschema union schemas require union(enum)");
             if (containsType(stack, T)) return;
             const next_stack = stack ++ [_]type{T};
-            inline for (st.fields) |field| {
-                const field_path = path ++ "." ++ field.name;
+            inline for (un.fields) |field| {
+                if (field.type != void) {
+                    const field_path = path ++ "." ++ field.name;
+                    validateTypeInner(field.type, next_stack, field_path);
+                }
+            }
+        },
+        .@"struct" => |st| {
+            if (comptime isStringMap(T)) {
+                validateTypeInner(mapValueType(T), stack, path ++ ".<value>");
+                return;
+            }
+            if (containsType(stack, T)) return;
+            const next_stack = stack ++ [_]type{T};
+            inline for (st.fields, 0..) |field, i| {
+                const field_path = if (st.is_tuple)
+                    path ++ "[" ++ std.fmt.comptimePrint("{}", .{i}) ++ "]"
+                else
+                    path ++ "." ++ field.name;
                 validateTypeInner(field.type, next_stack, field_path);
                 if (field.defaultValue()) |default_value| {
                     validateDefaultCompatible(field.type, default_value, field_path);
@@ -50,7 +67,7 @@ fn validateJsonValueInner(comptime T: type, comptime stack: []const type) void {
                 .slice => validateJsonValueInner(ptr.child, stack),
                 .one => switch (@typeInfo(ptr.child)) {
                     .array => |arr| validateJsonValueInner(arr.child, stack),
-                    .@"struct" => validateJsonValueInner(ptr.child, stack),
+                    .@"struct", .@"union" => validateJsonValueInner(ptr.child, stack),
                     else => unsupportedJsonValue(T),
                 },
                 else => unsupportedJsonValue(T),
@@ -59,7 +76,19 @@ fn validateJsonValueInner(comptime T: type, comptime stack: []const type) void {
         .array => |arr| validateJsonValueInner(arr.child, stack),
         .optional => |opt| validateJsonValueInner(opt.child, stack),
         .@"enum" => {},
+        .@"union" => |un| {
+            if (un.tag_type == null) @compileError("jsonschema union JSON values require union(enum)");
+            if (containsType(stack, T)) return;
+            const next_stack = stack ++ [_]type{T};
+            inline for (un.fields) |field| {
+                if (field.type != void) validateJsonValueInner(field.type, next_stack);
+            }
+        },
         .@"struct" => |st| {
+            if (comptime isStringMap(T)) {
+                validateJsonValueInner(mapValueType(T), stack);
+                return;
+            }
             if (containsType(stack, T)) return;
             const next_stack = stack ++ [_]type{T};
             inline for (st.fields) |field| validateJsonValueInner(field.type, next_stack);
@@ -160,6 +189,7 @@ pub fn isDefaultValueCompatible(comptime SchemaType: type, comptime value: anyty
             break :blk enumHasName(SchemaType, stringValue(value));
         },
         .@"struct" => |schema_struct| objectValueCompatible(SchemaType, schema_struct, value),
+        .@"union" => ValueType == SchemaType,
         else => false,
     };
 }
@@ -197,6 +227,21 @@ pub fn isString(comptime T: type) bool {
         },
         else => false,
     };
+}
+
+pub fn isStringMap(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct" => @hasDecl(T, "KV") and
+            @hasField(T.KV, "key") and
+            @hasField(T.KV, "value") and
+            isString(structFieldType(T.KV, "key")),
+        else => false,
+    };
+}
+
+pub fn mapValueType(comptime T: type) type {
+    if (!isStringMap(T)) unsupported(T);
+    return structFieldType(T.KV, "value");
 }
 
 pub fn isArrayLike(comptime T: type) bool {
