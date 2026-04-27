@@ -195,12 +195,12 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `$ref` | ✓ |  | Local `#/$defs` refs only. |
 | `$defs` | ✓ |  | Enabled by `use_defs`. |
 | Boolean schemas |  |  | No bare `true`/`false` schemas. |
-| `$id` |  |  |  |
-| `$anchor` |  |  |  |
-| `$dynamicAnchor` |  |  |  |
-| `$dynamicRef` |  |  |  |
-| `$vocabulary` |  |  |  |
-| `$comment` |  |  |  |
+| `$id` | ✓ |  | Metadata. |
+| `$anchor` | ✓ |  | Metadata; anchor name checked. |
+| `$dynamicAnchor` | ✓ |  | Metadata; anchor name checked. |
+| `$dynamicRef` | ✓ |  | Metadata. |
+| `$vocabulary` | ✓ |  | Metadata object with boolean values. |
+| `$comment` | ✓ |  | Metadata. |
 
 ### Applicator
 
@@ -266,6 +266,8 @@ Type metadata:
 pub const jsonschema = .{
     .name = "UserProfile",
     .title = "User",
+    .@"$id" = "https://example.com/schemas/user",
+    .@"$anchor" = "User",
     .description = "A user profile.",
     .discriminator = "kind", // opt into flattened discriminated-object union schema
     .examples = .{.{ .name = "Ada", .age = 42, .email = null }},
@@ -277,7 +279,7 @@ Field metadata:
 ```zig
 pub const jsonschema = .{
     .fields = .{
-        .name = .{ .name = "fullName", .minLength = 1, .maxLength = 128 },
+        .name = .{ .name = "fullName", .@"$comment" = "Display name.", .minLength = 1, .maxLength = 128 },
         .age = .{ .minimum = 0, .maximum = 130 },
         .email = .{ .format = "email" },
         .kind = .{ .@"const" = "user" },
@@ -287,7 +289,7 @@ pub const jsonschema = .{
 };
 ```
 
-`Options.field_naming` can transform Zig field names globally, for example `.camelCase` or `.PascalCase`. Field metadata `.name` renames one emitted JSON property and overrides the global naming policy. Use `.@"const"` for JSON Schema `const`, `.required` to override requiredness, and `.omit` to exclude a field from the schema. Type metadata `.discriminator` sets the discriminator field for `union(enum)` schemas. Unknown metadata keys, metadata for missing fields, duplicate emitted field names, invalid metadata types, invalid defaults, and constraints on the wrong field type are compile errors.
+`Options.field_naming` can transform Zig field names globally, for example `.camelCase` or `.PascalCase`. Field metadata `.name` renames one emitted JSON property and overrides the global naming policy. Use `.@"const"` for JSON Schema `const`, `.required` to override requiredness, and `.omit` to exclude a field from the schema. Core keywords use escaped field names such as `.@"$id"`, `.@"$anchor"`, and `.@"$comment"`. Type metadata `.discriminator` sets the discriminator field for `union(enum)` schemas. Unknown metadata keys, metadata for missing fields, duplicate emitted field names, invalid metadata types, invalid defaults, and constraints on the wrong field type are compile errors.
 
 ## Maps
 

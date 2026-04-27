@@ -57,6 +57,34 @@ test "semantic schema comparison ignores object key order" {
     );
 }
 
+test "core metadata emits draft 2020-12 core keywords" {
+    const User = struct {
+        name: []const u8,
+
+        pub const jsonschema = .{
+            .@"$id" = "https://example.com/schemas/user",
+            .@"$anchor" = "User",
+            .@"$dynamicAnchor" = "node",
+            .@"$vocabulary" = .{
+                .@"https://json-schema.org/draft/2020-12/vocab/core" = true,
+            },
+            .@"$comment" = "Core metadata.",
+            .fields = .{
+                .name = .{
+                    .@"$dynamicRef" = "#node",
+                    .@"$comment" = "User name.",
+                },
+            },
+        };
+    };
+
+    try expectSchemaJson(
+        User,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"https://example.com/schemas/user\",\"$anchor\":\"User\",\"$dynamicAnchor\":\"node\",\"$vocabulary\":{\"https://json-schema.org/draft/2020-12/vocab/core\":true},\"$comment\":\"Core metadata.\",\"type\":\"object\",\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\",\"$dynamicRef\":\"#node\",\"$comment\":\"User name.\"}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
 test "validate value reports metadata constraint failures" {
     const User = struct {
         name: []const u8,

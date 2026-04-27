@@ -307,6 +307,26 @@ pub fn build(b: *std.Build) void {
         "tests/compile_errors/union_discriminator_invalid.zig",
         "error: jsonschema union discriminator must not be empty",
     );
+    addCompileErrorTest(
+        b,
+        test_step,
+        mod,
+        target,
+        optimize,
+        "core_anchor_invalid",
+        "tests/compile_errors/core_anchor_invalid.zig",
+        "error: jsonschema type metadata key '$anchor' must match [A-Za-z][A-Za-z0-9_:.\\-]*",
+    );
+    addCompileErrorTest(
+        b,
+        test_step,
+        mod,
+        target,
+        optimize,
+        "vocabulary_wrong_type",
+        "tests/compile_errors/vocabulary_wrong_type.zig",
+        "error: jsonschema type metadata key '$vocabulary' values must be bool",
+    );
 }
 
 fn addCompileErrorTest(

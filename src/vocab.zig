@@ -1,3 +1,12 @@
+pub const core_keys = [_][]const u8{
+    "$id",
+    "$anchor",
+    "$dynamicAnchor",
+    "$dynamicRef",
+    "$vocabulary",
+    "$comment",
+};
+
 pub const annotation_keys = [_][]const u8{
     "title",
     "description",

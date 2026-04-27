@@ -3,9 +3,9 @@ const FieldNaming = @import("options.zig").FieldNaming;
 const reflect = @import("reflect.zig");
 const vocab = @import("vocab.zig");
 
-pub const type_meta_keys = vocab.annotation_keys;
-const type_meta_keys_with_fields = vocab.annotation_keys ++ vocab.emitter_type_keys;
-pub const field_annotation_keys = vocab.annotation_keys;
+pub const type_meta_keys = vocab.core_keys ++ vocab.annotation_keys;
+const type_meta_keys_with_fields = vocab.core_keys ++ vocab.annotation_keys ++ vocab.emitter_type_keys;
+pub const field_annotation_keys = vocab.core_keys ++ vocab.annotation_keys;
 pub const field_default_key = vocab.default_key;
 pub const field_const_key = vocab.const_key;
 pub const field_shape_keys = [_][]const u8{ "required", "omit" };
@@ -21,6 +21,7 @@ pub fn validateTypeMetadata(comptime T: type) void {
     const schema_meta = T.jsonschema;
     ensureStruct(@TypeOf(schema_meta), "type metadata");
     validateKnownKeys(@TypeOf(schema_meta), &type_meta_keys_with_fields, "type metadata");
+    validateCoreMetadata(schema_meta, "type metadata");
     validateMetadataValueTypes(schema_meta, &type_meta_keys, "type metadata");
     validateMetadataValueTypes(schema_meta, &[_][]const u8{ "name", "discriminator" }, "type metadata");
     validateExamplesCompatibility(T, schema_meta, "type metadata");
@@ -136,6 +137,7 @@ fn validateFieldsMetadata(comptime T: type, comptime fields_meta: anytype) void 
         const field_meta = @field(fields_meta, field_name);
         ensureStruct(@TypeOf(field_meta), "field metadata");
         validateKnownKeys(@TypeOf(field_meta), &(field_annotation_keys ++ field_default_key ++ field_const_key ++ field_shape_keys ++ field_constraint_keys ++ [_][]const u8{"name"}), "field metadata");
+        validateCoreMetadata(field_meta, "field metadata");
         validateMetadataValueTypes(field_meta, &field_annotation_keys, "field metadata");
         validateMetadataValueTypes(field_meta, &[_][]const u8{"name"}, "field metadata");
         validateMetadataValueTypes(field_meta, &field_default_key, "field metadata");
@@ -164,17 +166,21 @@ pub fn validateJsonPropertyName(comptime name: []const u8, comptime where: []con
 }
 
 fn stringValue(comptime value: anytype) []const u8 {
+    return stringValueForKey(value, "name", "metadata");
+}
+
+fn stringValueForKey(comptime value: anytype, comptime key: []const u8, comptime where: []const u8) []const u8 {
     const T = @TypeOf(value);
     return switch (@typeInfo(T)) {
         .pointer => |ptr| switch (ptr.size) {
             .slice => value,
             .one => switch (@typeInfo(ptr.child)) {
                 .array => |arr| value[0..arr.len],
-                else => @compileError("jsonschema metadata key 'name' must be a string"),
+                else => @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be a string"),
             },
-            else => @compileError("jsonschema metadata key 'name' must be a string"),
+            else => @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be a string"),
         },
-        else => @compileError("jsonschema metadata key 'name' must be a string"),
+        else => @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be a string"),
     };
 }
 
@@ -193,6 +199,12 @@ fn validateKnownKeys(comptime Meta: type, comptime allowed: []const []const u8, 
     }
 }
 
+fn validateCoreMetadata(comptime metadata: anytype, comptime where: []const u8) void {
+    if (@hasField(@TypeOf(metadata), "$anchor")) validateAnchor(@field(metadata, "$anchor"), "$anchor", where);
+    if (@hasField(@TypeOf(metadata), "$dynamicAnchor")) validateAnchor(@field(metadata, "$dynamicAnchor"), "$dynamicAnchor", where);
+    if (@hasField(@TypeOf(metadata), "$vocabulary")) validateVocabulary(@field(metadata, "$vocabulary"), where);
+}
+
 fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const []const u8, comptime where: []const u8) void {
     inline for (keys) |key| {
         if (@hasField(@TypeOf(metadata), key)) {
@@ -201,7 +213,12 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
                 std.mem.eql(u8, key, "title") or
                 std.mem.eql(u8, key, "description") or
                 std.mem.eql(u8, key, "pattern") or
-                std.mem.eql(u8, key, "format"))
+                std.mem.eql(u8, key, "format") or
+                std.mem.eql(u8, key, "$id") or
+                std.mem.eql(u8, key, "$anchor") or
+                std.mem.eql(u8, key, "$dynamicAnchor") or
+                std.mem.eql(u8, key, "$dynamicRef") or
+                std.mem.eql(u8, key, "$comment"))
             {
                 if (!reflect.isString(Value)) @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be a string");
             } else if (std.mem.eql(u8, key, "deprecated") or
@@ -229,8 +246,32 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
                 reflect.validateJsonValue(Value);
             } else if (std.mem.eql(u8, key, "examples")) {
                 reflect.validateExamples(Value);
+            } else if (std.mem.eql(u8, key, "$vocabulary")) {
+                validateVocabulary(@field(metadata, key), where);
             }
         }
+    }
+}
+
+fn validateAnchor(comptime value: anytype, comptime key: []const u8, comptime where: []const u8) void {
+    const anchor = stringValueForKey(value, key, where);
+    if (anchor.len == 0) @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must not be empty");
+    inline for (anchor, 0..) |byte, i| {
+        const ok = (byte >= 'a' and byte <= 'z') or
+            (byte >= 'A' and byte <= 'Z') or
+            (i != 0 and byte >= '0' and byte <= '9') or
+            (i != 0 and (byte == '-' or byte == '_' or byte == ':' or byte == '.'));
+        if (!ok) @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must match [A-Za-z][A-Za-z0-9_:.\\-]*");
+    }
+}
+
+fn validateVocabulary(comptime vocabulary: anytype, comptime where: []const u8) void {
+    const Vocabulary = @TypeOf(vocabulary);
+    switch (@typeInfo(Vocabulary)) {
+        .@"struct" => |st| inline for (st.fields) |field| {
+            if (field.type != bool) @compileError("jsonschema " ++ where ++ " key '$vocabulary' values must be bool");
+        },
+        else => @compileError("jsonschema " ++ where ++ " key '$vocabulary' must be a struct literal"),
     }
 }
 
