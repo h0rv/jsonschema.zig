@@ -213,7 +213,7 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `prefixItems` | ✓ | ◐ | Tuple structs. |
 | `anyOf` | ✓ | ◐ | Optionals only. |
 | `oneOf` | ✓ | ◐ | Tagged unions only. |
-| `contains` |  |  |  |
+| `contains` | ✓ |  | Array metadata. |
 | `patternProperties` | ✓ |  | Object metadata. |
 | `dependentSchemas` | ✓ |  | Object metadata. |
 | `propertyNames` | ✓ |  | Object metadata. |
@@ -237,7 +237,7 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `multipleOf` | ✓ | ✓ | Metadata; must be greater than zero. |
 | `pattern` | ✓ |  | Emit only. |
 | `uniqueItems` | ✓ | ✓ | Typed validation uses JSON-like equality for supported values. |
-| `maxContains` / `minContains` |  |  |  |
+| `maxContains` / `minContains` | ✓ |  | Array metadata. |
 | `maxProperties` / `minProperties` | ✓ | ✓ | Object metadata. |
 | `dependentRequired` | ✓ |  | Object metadata. |
 
@@ -286,6 +286,7 @@ pub const jsonschema = .{
         .age = .{ .minimum = 0, .maximum = 130 },
         .email = .{ .format = "email", .contentMediaType = "text/plain" },
         .kind = .{ .@"const" = "user" },
+        .tags = .{ .contains = .{ .@"const" = "admin" }, .minContains = 1 },
         .nickname = .{ .required = false },
         .internal_id = .{ .omit = true },
     },

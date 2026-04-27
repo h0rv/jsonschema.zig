@@ -173,6 +173,16 @@ pub fn build(b: *std.Build) void {
         mod,
         target,
         optimize,
+        "contains_non_array",
+        "tests/compile_errors/contains_non_array.zig",
+        "error: jsonschema array constraint 'contains' on non-array field 'contains_non_array.Bad.name'",
+    );
+    addCompileErrorTest(
+        b,
+        test_step,
+        mod,
+        target,
+        optimize,
         "examples_wrong_type",
         "tests/compile_errors/examples_wrong_type.zig",
         "error: jsonschema metadata key 'examples' must be an array",

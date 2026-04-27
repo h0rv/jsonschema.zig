@@ -237,6 +237,8 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
                 std.mem.eql(u8, key, "maxLength") or
                 std.mem.eql(u8, key, "minItems") or
                 std.mem.eql(u8, key, "maxItems") or
+                std.mem.eql(u8, key, "minContains") or
+                std.mem.eql(u8, key, "maxContains") or
                 std.mem.eql(u8, key, "minProperties") or
                 std.mem.eql(u8, key, "maxProperties"))
             {
@@ -254,6 +256,7 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
             {
                 validateSchemaMap(@field(metadata, key), key, where);
             } else if (std.mem.eql(u8, key, "propertyNames") or
+                std.mem.eql(u8, key, "contains") or
                 std.mem.eql(u8, key, "contentSchema"))
             {
                 reflect.validateJsonValue(Value);
@@ -389,7 +392,10 @@ fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field
                 if (!reflect.isString(Base)) @compileError("jsonschema string constraint '" ++ key ++ "' on non-string field '" ++ field_path ++ "'");
             } else if (std.mem.eql(u8, key, "minItems") or
                 std.mem.eql(u8, key, "maxItems") or
-                std.mem.eql(u8, key, "uniqueItems"))
+                std.mem.eql(u8, key, "uniqueItems") or
+                std.mem.eql(u8, key, "contains") or
+                std.mem.eql(u8, key, "minContains") or
+                std.mem.eql(u8, key, "maxContains"))
             {
                 if (!reflect.isArrayLike(Base)) @compileError("jsonschema array constraint '" ++ key ++ "' on non-array field '" ++ field_path ++ "'");
             } else if (std.mem.eql(u8, key, "minProperties") or

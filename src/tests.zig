@@ -115,6 +115,28 @@ test "validate value reports metadata constraint failures" {
     );
 }
 
+test "contains metadata emits for array fields" {
+    const Bag = struct {
+        codes: []const u16,
+
+        pub const jsonschema = .{
+            .fields = .{
+                .codes = .{
+                    .contains = .{ .@"const" = 7 },
+                    .minContains = 1,
+                    .maxContains = 3,
+                },
+            },
+        };
+    };
+
+    try expectSchemaJson(
+        Bag,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"codes\"],\"properties\":{\"codes\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"},\"contains\":{\"const\":7},\"minContains\":1,\"maxContains\":3}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
 test "content metadata emits for string fields" {
     const Asset = struct {
         data: []const u8,
