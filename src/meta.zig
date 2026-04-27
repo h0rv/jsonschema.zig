@@ -12,6 +12,7 @@ pub const field_shape_keys = [_][]const u8{ "required", "omit" };
 pub const field_constraint_keys = vocab.validation_keys;
 
 pub fn validateTypeMetadata(comptime T: type) void {
+    @setEvalBranchQuota(10_000);
     switch (@typeInfo(T)) {
         .@"struct", .@"enum", .@"union", .@"opaque" => {},
         else => return,
@@ -246,6 +247,12 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
             {
                 if (!reflect.isNumber(Value)) @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be number");
                 validateNumberMetadataValue(key, @field(metadata, key), where);
+            } else if (std.mem.eql(u8, key, "patternProperties") or
+                std.mem.eql(u8, key, "dependentSchemas"))
+            {
+                validateSchemaMap(@field(metadata, key), key, where);
+            } else if (std.mem.eql(u8, key, "propertyNames")) {
+                reflect.validateJsonValue(Value);
             } else if (std.mem.eql(u8, key, "dependentRequired")) {
                 validateDependentRequired(@field(metadata, key), where);
             } else if (std.mem.eql(u8, key, "default") or std.mem.eql(u8, key, "const")) {
@@ -293,6 +300,16 @@ fn validateVocabulary(comptime vocabulary: anytype, comptime where: []const u8) 
             if (field.type != bool) @compileError("jsonschema " ++ where ++ " key '$vocabulary' values must be bool");
         },
         else => @compileError("jsonschema " ++ where ++ " key '$vocabulary' must be a struct literal"),
+    }
+}
+
+fn validateSchemaMap(comptime schemas: anytype, comptime key: []const u8, comptime where: []const u8) void {
+    const Schemas = @TypeOf(schemas);
+    switch (@typeInfo(Schemas)) {
+        .@"struct" => |st| inline for (st.fields) |field| {
+            reflect.validateJsonValue(field.type);
+        },
+        else => @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be a struct literal"),
     }
 }
 
@@ -373,6 +390,9 @@ fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field
                 if (!reflect.isArrayLike(Base)) @compileError("jsonschema array constraint '" ++ key ++ "' on non-array field '" ++ field_path ++ "'");
             } else if (std.mem.eql(u8, key, "minProperties") or
                 std.mem.eql(u8, key, "maxProperties") or
+                std.mem.eql(u8, key, "patternProperties") or
+                std.mem.eql(u8, key, "dependentSchemas") or
+                std.mem.eql(u8, key, "propertyNames") or
                 std.mem.eql(u8, key, "dependentRequired"))
             {
                 if (!reflect.isObjectLike(Base)) @compileError("jsonschema object constraint '" ++ key ++ "' on non-object field '" ++ field_path ++ "'");

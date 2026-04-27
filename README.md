@@ -214,9 +214,9 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `anyOf` | ✓ | ◐ | Optionals only. |
 | `oneOf` | ✓ | ◐ | Tagged unions only. |
 | `contains` |  |  |  |
-| `patternProperties` |  |  |  |
-| `dependentSchemas` |  |  |  |
-| `propertyNames` |  |  |  |
+| `patternProperties` | ✓ |  | Object metadata. |
+| `dependentSchemas` | ✓ |  | Object metadata. |
+| `propertyNames` | ✓ |  | Object metadata. |
 | `if` / `then` / `else` |  |  |  |
 | `allOf` |  |  |  |
 | `not` |  |  |  |
@@ -271,6 +271,7 @@ pub const jsonschema = .{
     .description = "A user profile.",
     .minProperties = 1,
     .dependentRequired = .{ .email = &.{"name"} },
+    .propertyNames = .{ .pattern = "^[a-z_]+$" },
     .discriminator = "kind", // opt into flattened discriminated-object union schema
     .examples = .{.{ .name = "Ada", .age = 42, .email = null }},
 };

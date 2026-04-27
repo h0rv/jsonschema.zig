@@ -115,6 +115,31 @@ test "validate value reports metadata constraint failures" {
     );
 }
 
+test "object applicator metadata emits schema maps" {
+    const Config = struct {
+        values: std.StringHashMap([]const u8),
+
+        pub const jsonschema = .{
+            .propertyNames = .{ .pattern = "^[a-z_]+$" },
+            .patternProperties = .{
+                .@"^s_" = .{ .type = "string" },
+                .@"^i_" = .{ .type = "integer" },
+            },
+            .dependentSchemas = .{
+                .name = .{
+                    .required = &.{"label"},
+                },
+            },
+        };
+    };
+
+    try expectSchemaJson(
+        Config,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"propertyNames\":{\"pattern\":\"^[a-z_]+$\"},\"patternProperties\":{\"^s_\":{\"type\":\"string\"},\"^i_\":{\"type\":\"integer\"}},\"dependentSchemas\":{\"name\":{\"required\":[\"label\"]}},\"type\":\"object\",\"required\":[\"values\"],\"properties\":{\"values\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
 test "dependentRequired emits object dependencies" {
     const Payment = struct {
         credit_card: ?[]const u8 = null,

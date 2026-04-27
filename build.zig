@@ -153,6 +153,16 @@ pub fn build(b: *std.Build) void {
         mod,
         target,
         optimize,
+        "pattern_properties_wrong_type",
+        "tests/compile_errors/pattern_properties_wrong_type.zig",
+        "error: jsonschema type metadata key 'patternProperties' must be a struct literal",
+    );
+    addCompileErrorTest(
+        b,
+        test_step,
+        mod,
+        target,
+        optimize,
         "examples_wrong_type",
         "tests/compile_errors/examples_wrong_type.zig",
         "error: jsonschema metadata key 'examples' must be an array",
