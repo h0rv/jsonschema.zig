@@ -36,7 +36,7 @@ fn validateInner(comptime T: type, input: T, writer: anytype, comptime options: 
                 ok = try validateString(input, writer, path, field_meta) and ok;
             } else switch (ptr.size) {
                 .slice => {
-                    ok = try validateArrayBounds(input.len, writer, path, field_meta) and ok;
+                    ok = try validateArray(ptr.child, input, writer, path, field_meta) and ok;
                     for (input, 0..) |item, i| {
                         try writer.print("", .{});
                         _ = i;
@@ -51,7 +51,7 @@ fn validateInner(comptime T: type, input: T, writer: anytype, comptime options: 
             }
         },
         .array => |arr| {
-            ok = try validateArrayBounds(input.len, writer, path, field_meta) and ok;
+            ok = try validateArray(arr.child, input, writer, path, field_meta) and ok;
             for (input) |item| ok = try validateInner(arr.child, item, writer, options, path ++ "[]", .{}) and ok;
         },
         .@"struct" => |st| {
@@ -148,21 +148,91 @@ fn validateString(input: anytype, writer: anytype, comptime path: []const u8, co
     return ok;
 }
 
-fn validateArrayBounds(len: usize, writer: anytype, comptime path: []const u8, comptime field_meta: anytype) !bool {
+fn validateArray(comptime Child: type, input: anytype, writer: anytype, comptime path: []const u8, comptime field_meta: anytype) !bool {
     var ok = true;
     if (comptime @hasField(@TypeOf(field_meta), "minItems")) {
-        if (len < field_meta.minItems) {
+        if (input.len < field_meta.minItems) {
             try writer.print("{s}: failed minItems {}\n", .{ path, field_meta.minItems });
             ok = false;
         }
     }
     if (comptime @hasField(@TypeOf(field_meta), "maxItems")) {
-        if (len > field_meta.maxItems) {
+        if (input.len > field_meta.maxItems) {
             try writer.print("{s}: failed maxItems {}\n", .{ path, field_meta.maxItems });
             ok = false;
         }
     }
+    if (comptime @hasField(@TypeOf(field_meta), "uniqueItems") and field_meta.uniqueItems) {
+        if (!itemsUnique(Child, input)) {
+            try writer.print("{s}: failed uniqueItems\n", .{path});
+            ok = false;
+        }
+    }
     return ok;
+}
+
+fn itemsUnique(comptime Child: type, input: anytype) bool {
+    for (input, 0..) |left, i| {
+        for (input[i + 1 ..]) |right| {
+            if (jsonValueEquals(Child, left, right)) return false;
+        }
+    }
+    return true;
+}
+
+fn jsonValueEquals(comptime T: type, a: T, b: T) bool {
+    return switch (@typeInfo(T)) {
+        .bool, .int, .comptime_int, .float, .comptime_float => a == b,
+        .@"enum" => a == b,
+        .optional => |opt| blk: {
+            if (a == null and b == null) break :blk true;
+            if (a == null or b == null) break :blk false;
+            break :blk jsonValueEquals(opt.child, a.?, b.?);
+        },
+        .pointer => |ptr| blk: {
+            if (comptime reflect.isString(T)) break :blk std.mem.eql(u8, a, b);
+            switch (ptr.size) {
+                .slice => {
+                    if (a.len != b.len) break :blk false;
+                    for (a, b) |left, right| {
+                        if (!jsonValueEquals(ptr.child, left, right)) break :blk false;
+                    }
+                    break :blk true;
+                },
+                .one => switch (@typeInfo(ptr.child)) {
+                    .array, .@"struct", .@"union" => break :blk jsonValueEquals(ptr.child, a.*, b.*),
+                    else => break :blk false,
+                },
+                else => break :blk false,
+            }
+        },
+        .array => |arr| blk: {
+            for (a, b) |left, right| {
+                if (!jsonValueEquals(arr.child, left, right)) break :blk false;
+            }
+            break :blk true;
+        },
+        .@"struct" => |st| blk: {
+            if (comptime reflect.isStringMap(T)) break :blk false;
+            inline for (st.fields) |field| {
+                if (comptime !st.is_tuple and meta.fieldOmitted(T, field.name)) continue;
+                if (!jsonValueEquals(field.type, @field(a, field.name), @field(b, field.name))) break :blk false;
+            }
+            break :blk true;
+        },
+        .@"union" => |un| blk: {
+            if (std.meta.activeTag(a) != std.meta.activeTag(b)) break :blk false;
+            const tag_name = @tagName(a);
+            inline for (un.fields) |field| {
+                if (std.mem.eql(u8, field.name, tag_name)) {
+                    if (field.type == void) break :blk true;
+                    break :blk jsonValueEquals(field.type, @field(a, field.name), @field(b, field.name));
+                }
+            }
+            break :blk false;
+        },
+        else => false,
+    };
 }
 
 fn valueEquals(comptime T: type, a: T, b: anytype) bool {
