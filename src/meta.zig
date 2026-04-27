@@ -1,47 +1,15 @@
 const std = @import("std");
 const FieldNaming = @import("options.zig").FieldNaming;
 const reflect = @import("reflect.zig");
+const vocab = @import("vocab.zig");
 
-pub const type_meta_keys = [_][]const u8{
-    "title",
-    "description",
-    "examples",
-    "deprecated",
-    "readOnly",
-    "writeOnly",
-};
-
-const type_meta_keys_with_fields = type_meta_keys ++ [_][]const u8{ "fields", "name", "discriminator" };
-
-pub const field_annotation_keys = [_][]const u8{
-    "title",
-    "description",
-    "examples",
-    "deprecated",
-    "readOnly",
-    "writeOnly",
-};
-
-pub const field_default_key = [_][]const u8{"default"};
-
-pub const field_const_key = [_][]const u8{"const"};
-
+pub const type_meta_keys = vocab.annotation_keys;
+const type_meta_keys_with_fields = vocab.annotation_keys ++ vocab.emitter_type_keys;
+pub const field_annotation_keys = vocab.annotation_keys;
+pub const field_default_key = vocab.default_key;
+pub const field_const_key = vocab.const_key;
 pub const field_shape_keys = [_][]const u8{ "required", "omit" };
-
-pub const field_constraint_keys = [_][]const u8{
-    "minimum",
-    "maximum",
-    "exclusiveMinimum",
-    "exclusiveMaximum",
-    "multipleOf",
-    "minLength",
-    "maxLength",
-    "pattern",
-    "format",
-    "minItems",
-    "maxItems",
-    "uniqueItems",
-};
+pub const field_constraint_keys = vocab.validation_keys;
 
 pub fn validateTypeMetadata(comptime T: type) void {
     switch (@typeInfo(T)) {
