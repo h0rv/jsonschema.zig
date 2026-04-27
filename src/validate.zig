@@ -58,7 +58,7 @@ fn validateInner(comptime T: type, input: T, writer: anytype, comptime options: 
             for (input) |item| ok = try validateInner(arr.child, item, writer, options, path ++ "[]", .{}) and ok;
         },
         .@"struct" => |st| {
-            ok = try validateObject(T, input, writer, path, field_meta) and ok;
+            ok = try validateObject(T, input, writer, options, path, field_meta) and ok;
             if (comptime reflect.isStringMap(T)) return ok;
             if (st.is_tuple) {
                 inline for (st.fields, 0..) |field, i| {
@@ -152,7 +152,7 @@ fn validateString(input: anytype, writer: anytype, comptime path: []const u8, co
     return ok;
 }
 
-fn validateObject(comptime T: type, input: T, writer: anytype, comptime path: []const u8, comptime field_meta: anytype) !bool {
+fn validateObject(comptime T: type, input: T, writer: anytype, comptime options: Options, comptime path: []const u8, comptime field_meta: anytype) !bool {
     var ok = true;
     const count = objectPropertyCount(T, input);
     if (comptime @hasField(@TypeOf(field_meta), "minProperties")) {
@@ -167,7 +167,70 @@ fn validateObject(comptime T: type, input: T, writer: anytype, comptime path: []
             ok = false;
         }
     }
+    if (comptime @hasField(@TypeOf(field_meta), "dependentRequired") and !reflect.isStringMap(T)) {
+        ok = try validateDependentRequired(T, input, writer, options, path, field_meta.dependentRequired) and ok;
+    }
     return ok;
+}
+
+fn validateDependentRequired(comptime T: type, input: T, writer: anytype, comptime options: Options, comptime path: []const u8, comptime dependencies: anytype) !bool {
+    var ok = true;
+    inline for (@typeInfo(@TypeOf(dependencies)).@"struct".fields) |dependency| {
+        const property_name = dependency.name;
+        if (propertyPresent(T, input, options, property_name)) {
+            ok = try validateDependentRequiredList(T, input, writer, options, path, property_name, @field(dependencies, property_name)) and ok;
+        }
+    }
+    return ok;
+}
+
+fn validateDependentRequiredList(comptime T: type, input: T, writer: anytype, comptime options: Options, comptime path: []const u8, comptime property_name: []const u8, comptime dependencies: anytype) !bool {
+    var ok = true;
+    switch (@typeInfo(@TypeOf(dependencies))) {
+        .array => inline for (dependencies) |dependency| {
+            ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(dependency)) and ok;
+        },
+        .pointer => |ptr| switch (ptr.size) {
+            .slice => inline for (dependencies) |dependency| {
+                ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(dependency)) and ok;
+            },
+            .one => switch (@typeInfo(ptr.child)) {
+                .array => inline for (dependencies.*) |dependency| {
+                    ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(dependency)) and ok;
+                },
+                .@"struct" => |st| inline for (st.fields) |field| {
+                    ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(@field(dependencies.*, field.name))) and ok;
+                },
+                else => unreachable,
+            },
+            else => unreachable,
+        },
+        .@"struct" => |st| inline for (st.fields) |field| {
+            ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(@field(dependencies, field.name))) and ok;
+        },
+        else => unreachable,
+    }
+    return ok;
+}
+
+fn validateDependencyName(comptime T: type, input: T, writer: anytype, comptime options: Options, comptime path: []const u8, comptime property_name: []const u8, comptime dependency: []const u8) !bool {
+    if (propertyPresent(T, input, options, dependency)) return true;
+    try writer.print("{s}.{s}: requires {s}\n", .{ path, property_name, dependency });
+    return false;
+}
+
+fn propertyPresent(comptime T: type, input: T, comptime options: Options, comptime property_name: []const u8) bool {
+    inline for (@typeInfo(T).@"struct".fields) |field| {
+        if (comptime meta.fieldOmitted(T, field.name)) continue;
+        const emitted = comptime meta.schemaFieldName(T, field.name, options.field_naming);
+        if (comptime std.mem.eql(u8, emitted, property_name)) {
+            return switch (@typeInfo(field.type)) {
+                .optional => @field(input, field.name) != null,
+                else => true,
+            };
+        }
+    }
+    return false;
 }
 
 fn objectPropertyCount(comptime T: type, input: T) usize {

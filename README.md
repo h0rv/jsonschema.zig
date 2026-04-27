@@ -239,7 +239,7 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `uniqueItems` | ✓ | ✓ | Typed validation uses JSON-like equality for supported values. |
 | `maxContains` / `minContains` | ✓ | ◐ | With typed `contains` validation. |
 | `maxProperties` / `minProperties` | ✓ | ✓ | Object metadata. |
-| `dependentRequired` | ✓ |  | Object metadata. |
+| `dependentRequired` | ✓ | ◐ | Typed validation treats optional `null` as absent. |
 
 ### Format, annotation, content
 

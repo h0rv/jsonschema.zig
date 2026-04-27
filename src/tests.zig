@@ -253,7 +253,7 @@ test "object applicator metadata emits schema maps" {
     );
 }
 
-test "dependentRequired emits object dependencies" {
+test "dependentRequired emits and validates object dependencies" {
     const Payment = struct {
         credit_card: ?[]const u8 = null,
         billing_address: ?[]const u8 = null,
@@ -270,6 +270,13 @@ test "dependentRequired emits object dependencies" {
         "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"dependentRequired\":{\"credit_card\":[\"billing_address\"]},\"type\":\"object\",\"required\":[\"credit_card\",\"billing_address\"],\"properties\":{\"credit_card\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"default\":null},\"billing_address\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"default\":null}},\"additionalProperties\":false}",
         .{},
     );
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const ok = try jsonschema.validateValue(Payment, .{ .credit_card = "4242", .billing_address = null }, &out.writer, .{});
+    try std.testing.expect(!ok);
+    try std.testing.expectEqualStrings("$.credit_card: requires billing_address\n", out.written());
 }
 
 test "object property constraints emit and validate" {
