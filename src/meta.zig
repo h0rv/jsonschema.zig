@@ -216,6 +216,8 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
                 std.mem.eql(u8, key, "description") or
                 std.mem.eql(u8, key, "pattern") or
                 std.mem.eql(u8, key, "format") or
+                std.mem.eql(u8, key, "contentEncoding") or
+                std.mem.eql(u8, key, "contentMediaType") or
                 std.mem.eql(u8, key, "$id") or
                 std.mem.eql(u8, key, "$anchor") or
                 std.mem.eql(u8, key, "$dynamicAnchor") or
@@ -251,7 +253,9 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
                 std.mem.eql(u8, key, "dependentSchemas"))
             {
                 validateSchemaMap(@field(metadata, key), key, where);
-            } else if (std.mem.eql(u8, key, "propertyNames")) {
+            } else if (std.mem.eql(u8, key, "propertyNames") or
+                std.mem.eql(u8, key, "contentSchema"))
+            {
                 reflect.validateJsonValue(Value);
             } else if (std.mem.eql(u8, key, "dependentRequired")) {
                 validateDependentRequired(@field(metadata, key), where);
@@ -396,6 +400,11 @@ fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field
                 std.mem.eql(u8, key, "dependentRequired"))
             {
                 if (!reflect.isObjectLike(Base)) @compileError("jsonschema object constraint '" ++ key ++ "' on non-object field '" ++ field_path ++ "'");
+            } else if (std.mem.eql(u8, key, "contentEncoding") or
+                std.mem.eql(u8, key, "contentMediaType") or
+                std.mem.eql(u8, key, "contentSchema"))
+            {
+                if (!reflect.isString(Base)) @compileError("jsonschema content constraint '" ++ key ++ "' on non-string field '" ++ field_path ++ "'");
             }
         }
     }

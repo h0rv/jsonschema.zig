@@ -33,6 +33,12 @@ pub const object_constraint_keys = [_][]const u8{
     "dependentRequired",
 };
 
+pub const content_keys = [_][]const u8{
+    "contentEncoding",
+    "contentMediaType",
+    "contentSchema",
+};
+
 pub const validation_keys = [_][]const u8{
     "minimum",
     "maximum",
@@ -52,4 +58,7 @@ pub const validation_keys = [_][]const u8{
     "dependentSchemas",
     "propertyNames",
     "dependentRequired",
+    "contentEncoding",
+    "contentMediaType",
+    "contentSchema",
 };

@@ -163,6 +163,16 @@ pub fn build(b: *std.Build) void {
         mod,
         target,
         optimize,
+        "content_encoding_non_string",
+        "tests/compile_errors/content_encoding_non_string.zig",
+        "error: jsonschema content constraint 'contentEncoding' on non-string field 'content_encoding_non_string.Bad.age'",
+    );
+    addCompileErrorTest(
+        b,
+        test_step,
+        mod,
+        target,
+        optimize,
         "examples_wrong_type",
         "tests/compile_errors/examples_wrong_type.zig",
         "error: jsonschema metadata key 'examples' must be an array",

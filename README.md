@@ -252,9 +252,9 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `deprecated` | ✓ |  |  |
 | `readOnly` / `writeOnly` | ✓ |  |  |
 | `examples` | ✓ |  |  |
-| `contentEncoding` |  |  |  |
-| `contentMediaType` |  |  |  |
-| `contentSchema` |  |  |  |
+| `contentEncoding` | ✓ |  | String field metadata. |
+| `contentMediaType` | ✓ |  | String field metadata. |
+| `contentSchema` | ✓ |  | String field metadata. |
 
 ## Metadata
 
@@ -284,7 +284,7 @@ pub const jsonschema = .{
     .fields = .{
         .name = .{ .name = "fullName", .@"$comment" = "Display name.", .minLength = 1, .maxLength = 128 },
         .age = .{ .minimum = 0, .maximum = 130 },
-        .email = .{ .format = "email" },
+        .email = .{ .format = "email", .contentMediaType = "text/plain" },
         .kind = .{ .@"const" = "user" },
         .nickname = .{ .required = false },
         .internal_id = .{ .omit = true },

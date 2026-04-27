@@ -115,6 +115,28 @@ test "validate value reports metadata constraint failures" {
     );
 }
 
+test "content metadata emits for string fields" {
+    const Asset = struct {
+        data: []const u8,
+
+        pub const jsonschema = .{
+            .fields = .{
+                .data = .{
+                    .contentEncoding = "base64",
+                    .contentMediaType = "application/json",
+                    .contentSchema = .{ .type = "object" },
+                },
+            },
+        };
+    };
+
+    try expectSchemaJson(
+        Asset,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"data\"],\"properties\":{\"data\":{\"type\":\"string\",\"contentEncoding\":\"base64\",\"contentMediaType\":\"application/json\",\"contentSchema\":{\"type\":\"object\"}}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
 test "object applicator metadata emits schema maps" {
     const Config = struct {
         values: std.StringHashMap([]const u8),
