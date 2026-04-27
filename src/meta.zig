@@ -266,8 +266,11 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
                 std.mem.eql(u8, key, "unevaluatedProperties"))
             {
                 reflect.validateJsonValue(Value);
-            } else if (std.mem.eql(u8, key, "allOf")) {
-                validateSchemaArray(@field(metadata, key), "jsonschema " ++ where ++ " key 'allOf' must be an array of schemas");
+            } else if (std.mem.eql(u8, key, "allOf") or
+                std.mem.eql(u8, key, "anyOf") or
+                std.mem.eql(u8, key, "oneOf"))
+            {
+                validateSchemaArray(@field(metadata, key), "jsonschema " ++ where ++ " key '" ++ key ++ "' must be an array of schemas");
             } else if (std.mem.eql(u8, key, "dependentRequired")) {
                 validateDependentRequired(@field(metadata, key), where);
             } else if (std.mem.eql(u8, key, "default") or std.mem.eql(u8, key, "const")) {

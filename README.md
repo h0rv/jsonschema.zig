@@ -211,8 +211,8 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `additionalProperties` | ✓ |  | Boolean for structs; schema for string-key maps. |
 | `items` | ✓ | ◐ | Arrays and slices. Validation recurses into items. |
 | `prefixItems` | ✓ | ◐ | Tuple structs. |
-| `anyOf` | ✓ | ◐ | Optionals only. |
-| `oneOf` | ✓ | ◐ | Tagged unions only. |
+| `anyOf` | ✓ | ◐ | Optionals; schema-literal metadata. |
+| `oneOf` | ✓ | ◐ | Tagged unions; schema-literal metadata. |
 | `contains` | ✓ | ◐ | Array metadata; typed validation supports `const` schemas. |
 | `patternProperties` | ✓ |  | Object metadata. |
 | `dependentSchemas` | ✓ |  | Object metadata. |

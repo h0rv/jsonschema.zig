@@ -126,6 +126,13 @@ test "schema applicator metadata emits schema literals" {
                 .{ .type = "object" },
                 .{ .required = &.{"score"} },
             },
+            .anyOf = .{
+                .{ .required = &.{"score"} },
+                .{ .required = &.{"level"} },
+            },
+            .oneOf = .{
+                .{ .required = &.{"score"} },
+            },
             .@"if" = .{ .properties = .{ .score = .{ .minimum = 10 } } },
             .then = .{ .required = &.{"score"} },
             .@"else" = .{ .not = .{ .required = &.{"score"} } },
@@ -139,7 +146,7 @@ test "schema applicator metadata emits schema literals" {
 
     try expectSchemaJson(
         Value,
-        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"allOf\":[{\"type\":\"object\"},{\"required\":[\"score\"]}],\"if\":{\"properties\":{\"score\":{\"minimum\":10}}},\"then\":{\"required\":[\"score\"]},\"else\":{\"not\":{\"required\":[\"score\"]}},\"unevaluatedItems\":false,\"unevaluatedProperties\":false,\"type\":\"object\",\"required\":[\"score\"],\"properties\":{\"score\":{\"type\":\"integer\",\"not\":{\"const\":0}}},\"additionalProperties\":false}",
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"allOf\":[{\"type\":\"object\"},{\"required\":[\"score\"]}],\"anyOf\":[{\"required\":[\"score\"]},{\"required\":[\"level\"]}],\"oneOf\":[{\"required\":[\"score\"]}],\"if\":{\"properties\":{\"score\":{\"minimum\":10}}},\"then\":{\"required\":[\"score\"]},\"else\":{\"not\":{\"required\":[\"score\"]}},\"unevaluatedItems\":false,\"unevaluatedProperties\":false,\"type\":\"object\",\"required\":[\"score\"],\"properties\":{\"score\":{\"type\":\"integer\",\"not\":{\"const\":0}}},\"additionalProperties\":false}",
         .{},
     );
 }

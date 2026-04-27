@@ -41,6 +41,8 @@ pub const content_keys = [_][]const u8{
 
 pub const schema_applicator_keys = [_][]const u8{
     "allOf",
+    "anyOf",
+    "oneOf",
     "not",
     "if",
     "then",
@@ -75,6 +77,8 @@ pub const validation_keys = [_][]const u8{
     "contentMediaType",
     "contentSchema",
     "allOf",
+    "anyOf",
+    "oneOf",
     "not",
     "if",
     "then",
