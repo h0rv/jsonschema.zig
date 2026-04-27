@@ -107,7 +107,28 @@ fn validateNumeric(comptime T: type, input: T, writer: anytype, comptime path: [
             }
         }
     }
+    if (comptime @hasField(@TypeOf(field_meta), "multipleOf")) {
+        if (!isMultipleOf(input, field_meta.multipleOf)) {
+            try writer.print("{s}: failed multipleOf ", .{path});
+            try writeValue(@TypeOf(field_meta.multipleOf), writer, field_meta.multipleOf);
+            try writer.writeAll("\n");
+            ok = false;
+        }
+    }
     return ok;
+}
+
+fn isMultipleOf(input: anytype, multiple: anytype) bool {
+    const quotient = numberToF128(input) / numberToF128(multiple);
+    return std.math.approxEqAbs(f128, quotient, @round(quotient), 1e-9);
+}
+
+fn numberToF128(input: anytype) f128 {
+    return switch (@typeInfo(@TypeOf(input))) {
+        .int, .comptime_int => @floatFromInt(input),
+        .float, .comptime_float => @as(f128, input),
+        else => unreachable,
+    };
 }
 
 fn validateString(input: anytype, writer: anytype, comptime path: []const u8, comptime field_meta: anytype) !bool {

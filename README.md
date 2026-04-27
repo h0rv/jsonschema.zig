@@ -234,7 +234,7 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `exclusiveMinimum` / `exclusiveMaximum` | ✓ | ✓ | Metadata. |
 | `minLength` / `maxLength` | ✓ | ◐ | Validation uses byte length. |
 | `minItems` / `maxItems` | ✓ | ✓ | Metadata; optional fixed-array inference. |
-| `multipleOf` | ✓ |  | Emit only. |
+| `multipleOf` | ✓ | ✓ | Metadata; must be greater than zero. |
 | `pattern` | ✓ |  | Emit only. |
 | `uniqueItems` | ✓ |  | Emit only. |
 | `maxContains` / `minContains` |  |  |  |

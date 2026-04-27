@@ -89,12 +89,14 @@ test "validate value reports metadata constraint failures" {
     const User = struct {
         name: []const u8,
         age: u8,
+        score: f32,
         tags: []const []const u8,
 
         pub const jsonschema = .{
             .fields = .{
                 .name = .{ .minLength = 2 },
                 .age = .{ .minimum = 18, .maximum = 99 },
+                .score = .{ .multipleOf = 0.5 },
                 .tags = .{ .minItems = 1 },
             },
         };
@@ -103,10 +105,10 @@ test "validate value reports metadata constraint failures" {
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    const ok = try jsonschema.validateValue(User, .{ .name = "A", .age = 17, .tags = &.{} }, &out.writer, .{});
+    const ok = try jsonschema.validateValue(User, .{ .name = "A", .age = 17, .score = 2.25, .tags = &.{} }, &out.writer, .{});
     try std.testing.expect(!ok);
     try std.testing.expectEqualStrings(
-        "$.name: failed minLength 2\n$.age: failed minimum 18\n$.tags: failed minItems 1\n",
+        "$.name: failed minLength 2\n$.age: failed minimum 18\n$.score: failed multipleOf 0.5\n$.tags: failed minItems 1\n",
         out.written(),
     );
 }

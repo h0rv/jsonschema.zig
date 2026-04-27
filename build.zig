@@ -113,6 +113,16 @@ pub fn build(b: *std.Build) void {
         mod,
         target,
         optimize,
+        "multiple_of_nonpositive",
+        "tests/compile_errors/multiple_of_nonpositive.zig",
+        "error: jsonschema field metadata key 'multipleOf' must be > 0",
+    );
+    addCompileErrorTest(
+        b,
+        test_step,
+        mod,
+        target,
+        optimize,
         "format_on_non_string",
         "tests/compile_errors/format_on_non_string.zig",
         "error: jsonschema string constraint 'format' on non-string field 'format_on_non_string.Bad.age'",

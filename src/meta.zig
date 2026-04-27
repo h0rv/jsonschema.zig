@@ -242,6 +242,7 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
                 std.mem.eql(u8, key, "multipleOf"))
             {
                 if (!reflect.isNumber(Value)) @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be number");
+                validateNumberMetadataValue(key, @field(metadata, key), where);
             } else if (std.mem.eql(u8, key, "default") or std.mem.eql(u8, key, "const")) {
                 reflect.validateJsonValue(Value);
             } else if (std.mem.eql(u8, key, "examples")) {
@@ -251,6 +252,21 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
             }
         }
     }
+}
+
+fn validateNumberMetadataValue(comptime key: []const u8, comptime value: anytype, comptime where: []const u8) void {
+    if (!isFiniteNumber(value)) @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be finite");
+    if (std.mem.eql(u8, key, "multipleOf") and value <= 0) {
+        @compileError("jsonschema " ++ where ++ " key 'multipleOf' must be > 0");
+    }
+}
+
+fn isFiniteNumber(comptime value: anytype) bool {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .float => std.math.isFinite(value),
+        .comptime_float => std.math.isFinite(@as(f128, value)),
+        else => true,
+    };
 }
 
 fn validateAnchor(comptime value: anytype, comptime key: []const u8, comptime where: []const u8) void {
