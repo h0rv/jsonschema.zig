@@ -39,6 +39,16 @@ pub const content_keys = [_][]const u8{
     "contentSchema",
 };
 
+pub const schema_applicator_keys = [_][]const u8{
+    "allOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "unevaluatedItems",
+    "unevaluatedProperties",
+};
+
 pub const validation_keys = [_][]const u8{
     "minimum",
     "maximum",
@@ -64,4 +74,11 @@ pub const validation_keys = [_][]const u8{
     "contentEncoding",
     "contentMediaType",
     "contentSchema",
+    "allOf",
+    "not",
+    "if",
+    "then",
+    "else",
+    "unevaluatedItems",
+    "unevaluatedProperties",
 };

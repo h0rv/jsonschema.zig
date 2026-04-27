@@ -3,8 +3,8 @@ const FieldNaming = @import("options.zig").FieldNaming;
 const reflect = @import("reflect.zig");
 const vocab = @import("vocab.zig");
 
-pub const type_meta_keys = vocab.core_keys ++ vocab.annotation_keys ++ vocab.object_constraint_keys;
-const type_meta_keys_with_fields = vocab.core_keys ++ vocab.annotation_keys ++ vocab.object_constraint_keys ++ vocab.emitter_type_keys;
+pub const type_meta_keys = vocab.core_keys ++ vocab.annotation_keys ++ vocab.object_constraint_keys ++ vocab.schema_applicator_keys;
+const type_meta_keys_with_fields = vocab.core_keys ++ vocab.annotation_keys ++ vocab.object_constraint_keys ++ vocab.schema_applicator_keys ++ vocab.emitter_type_keys;
 pub const field_annotation_keys = vocab.core_keys ++ vocab.annotation_keys;
 pub const field_default_key = vocab.default_key;
 pub const field_const_key = vocab.const_key;
@@ -257,9 +257,17 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
                 validateSchemaMap(@field(metadata, key), key, where);
             } else if (std.mem.eql(u8, key, "propertyNames") or
                 std.mem.eql(u8, key, "contains") or
-                std.mem.eql(u8, key, "contentSchema"))
+                std.mem.eql(u8, key, "contentSchema") or
+                std.mem.eql(u8, key, "not") or
+                std.mem.eql(u8, key, "if") or
+                std.mem.eql(u8, key, "then") or
+                std.mem.eql(u8, key, "else") or
+                std.mem.eql(u8, key, "unevaluatedItems") or
+                std.mem.eql(u8, key, "unevaluatedProperties"))
             {
                 reflect.validateJsonValue(Value);
+            } else if (std.mem.eql(u8, key, "allOf")) {
+                validateSchemaArray(@field(metadata, key), "jsonschema " ++ where ++ " key 'allOf' must be an array of schemas");
             } else if (std.mem.eql(u8, key, "dependentRequired")) {
                 validateDependentRequired(@field(metadata, key), where);
             } else if (std.mem.eql(u8, key, "default") or std.mem.eql(u8, key, "const")) {
@@ -307,6 +315,30 @@ fn validateVocabulary(comptime vocabulary: anytype, comptime where: []const u8) 
             if (field.type != bool) @compileError("jsonschema " ++ where ++ " key '$vocabulary' values must be bool");
         },
         else => @compileError("jsonschema " ++ where ++ " key '$vocabulary' must be a struct literal"),
+    }
+}
+
+fn validateSchemaArray(comptime value: anytype, comptime message: []const u8) void {
+    const T = @TypeOf(value);
+    switch (@typeInfo(T)) {
+        .array => |arr| reflect.validateJsonValue(arr.child),
+        .pointer => |ptr| switch (ptr.size) {
+            .slice => reflect.validateJsonValue(ptr.child),
+            .one => switch (@typeInfo(ptr.child)) {
+                .array => |arr| reflect.validateJsonValue(arr.child),
+                .@"struct" => |st| {
+                    if (!st.is_tuple) @compileError(message);
+                    inline for (st.fields) |field| reflect.validateJsonValue(field.type);
+                },
+                else => @compileError(message),
+            },
+            else => @compileError(message),
+        },
+        .@"struct" => |st| {
+            if (!st.is_tuple) @compileError(message);
+            inline for (st.fields) |field| reflect.validateJsonValue(field.type);
+        },
+        else => @compileError(message),
     }
 }
 

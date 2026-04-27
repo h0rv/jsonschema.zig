@@ -115,6 +115,32 @@ test "validate value reports metadata constraint failures" {
     );
 }
 
+test "schema applicator metadata emits schema literals" {
+    const Value = struct {
+        score: u8,
+
+        pub const jsonschema = .{
+            .allOf = .{
+                .{ .type = "object" },
+                .{ .required = &.{"score"} },
+            },
+            .@"if" = .{ .properties = .{ .score = .{ .minimum = 10 } } },
+            .then = .{ .required = &.{"score"} },
+            .@"else" = .{ .not = .{ .required = &.{"score"} } },
+            .unevaluatedProperties = false,
+            .fields = .{
+                .score = .{ .not = .{ .@"const" = 0 } },
+            },
+        };
+    };
+
+    try expectSchemaJson(
+        Value,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"allOf\":[{\"type\":\"object\"},{\"required\":[\"score\"]}],\"if\":{\"properties\":{\"score\":{\"minimum\":10}}},\"then\":{\"required\":[\"score\"]},\"else\":{\"not\":{\"required\":[\"score\"]}},\"unevaluatedProperties\":false,\"type\":\"object\",\"required\":[\"score\"],\"properties\":{\"score\":{\"type\":\"integer\",\"not\":{\"const\":0}}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
 test "contains metadata emits for array fields" {
     const Bag = struct {
         codes: []const u16,
