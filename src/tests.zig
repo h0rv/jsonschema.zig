@@ -129,6 +129,7 @@ test "schema applicator metadata emits schema literals" {
             .@"if" = .{ .properties = .{ .score = .{ .minimum = 10 } } },
             .then = .{ .required = &.{"score"} },
             .@"else" = .{ .not = .{ .required = &.{"score"} } },
+            .unevaluatedItems = false,
             .unevaluatedProperties = false,
             .fields = .{
                 .score = .{ .not = .{ .@"const" = 0 } },
@@ -138,7 +139,7 @@ test "schema applicator metadata emits schema literals" {
 
     try expectSchemaJson(
         Value,
-        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"allOf\":[{\"type\":\"object\"},{\"required\":[\"score\"]}],\"if\":{\"properties\":{\"score\":{\"minimum\":10}}},\"then\":{\"required\":[\"score\"]},\"else\":{\"not\":{\"required\":[\"score\"]}},\"unevaluatedProperties\":false,\"type\":\"object\",\"required\":[\"score\"],\"properties\":{\"score\":{\"type\":\"integer\",\"not\":{\"const\":0}}},\"additionalProperties\":false}",
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"allOf\":[{\"type\":\"object\"},{\"required\":[\"score\"]}],\"if\":{\"properties\":{\"score\":{\"minimum\":10}}},\"then\":{\"required\":[\"score\"]},\"else\":{\"not\":{\"required\":[\"score\"]}},\"unevaluatedItems\":false,\"unevaluatedProperties\":false,\"type\":\"object\",\"required\":[\"score\"],\"properties\":{\"score\":{\"type\":\"integer\",\"not\":{\"const\":0}}},\"additionalProperties\":false}",
         .{},
     );
 }
@@ -163,6 +164,39 @@ test "contains metadata emits for array fields" {
         "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"required\":[\"codes\"],\"properties\":{\"codes\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"},\"contains\":{\"const\":7},\"minContains\":1,\"maxContains\":3}},\"additionalProperties\":false}",
         .{},
     );
+}
+
+test "contains metadata validates default min and max count" {
+    const NeedSeven = struct {
+        codes: []const u16,
+
+        pub const jsonschema = .{
+            .fields = .{
+                .codes = .{ .contains = .{ .@"const" = 7 } },
+            },
+        };
+    };
+    const MaxOneSeven = struct {
+        codes: []const u16,
+
+        pub const jsonschema = .{
+            .fields = .{
+                .codes = .{ .contains = .{ .@"const" = 7 }, .maxContains = 1 },
+            },
+        };
+    };
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const missing = try jsonschema.validateValue(NeedSeven, .{ .codes = &.{ 1, 2 } }, &out.writer, .{});
+    try std.testing.expect(!missing);
+    try std.testing.expectEqualStrings("$.codes: failed contains\n", out.written());
+
+    out.clearRetainingCapacity();
+    const too_many = try jsonschema.validateValue(MaxOneSeven, .{ .codes = &.{ 7, 7 } }, &out.writer, .{});
+    try std.testing.expect(!too_many);
+    try std.testing.expectEqualStrings("$.codes: failed maxContains 1\n", out.written());
 }
 
 test "content metadata emits for string fields" {
