@@ -92,6 +92,7 @@ test "validate value reports metadata constraint failures" {
         score: f32,
         codes: []const u16,
         tags: []const []const u8,
+        levels: []const u16,
 
         pub const jsonschema = .{
             .fields = .{
@@ -100,6 +101,7 @@ test "validate value reports metadata constraint failures" {
                 .score = .{ .multipleOf = 0.5 },
                 .codes = .{ .uniqueItems = true },
                 .tags = .{ .minItems = 1 },
+                .levels = .{ .contains = .{ .@"const" = 7 }, .minContains = 2 },
             },
         };
     };
@@ -107,10 +109,10 @@ test "validate value reports metadata constraint failures" {
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    const ok = try jsonschema.validateValue(User, .{ .name = "A", .age = 17, .score = 2.25, .codes = &.{ 1, 1 }, .tags = &.{} }, &out.writer, .{});
+    const ok = try jsonschema.validateValue(User, .{ .name = "A", .age = 17, .score = 2.25, .codes = &.{ 1, 1 }, .tags = &.{}, .levels = &.{ 1, 7 } }, &out.writer, .{});
     try std.testing.expect(!ok);
     try std.testing.expectEqualStrings(
-        "$.name: failed minLength 2\n$.age: failed minimum 18\n$.score: failed multipleOf 0.5\n$.codes: failed uniqueItems\n$.tags: failed minItems 1\n",
+        "$.name: failed minLength 2\n$.age: failed minimum 18\n$.score: failed multipleOf 0.5\n$.codes: failed uniqueItems\n$.tags: failed minItems 1\n$.levels: failed minContains 2\n",
         out.written(),
     );
 }

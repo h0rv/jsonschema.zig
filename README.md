@@ -213,7 +213,7 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `prefixItems` | ✓ | ◐ | Tuple structs. |
 | `anyOf` | ✓ | ◐ | Optionals only. |
 | `oneOf` | ✓ | ◐ | Tagged unions only. |
-| `contains` | ✓ |  | Array metadata. |
+| `contains` | ✓ | ◐ | Array metadata; typed validation supports `const` schemas. |
 | `patternProperties` | ✓ |  | Object metadata. |
 | `dependentSchemas` | ✓ |  | Object metadata. |
 | `propertyNames` | ✓ |  | Object metadata. |
@@ -237,7 +237,7 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `multipleOf` | ✓ | ✓ | Metadata; must be greater than zero. |
 | `pattern` | ✓ |  | Emit only. |
 | `uniqueItems` | ✓ | ✓ | Typed validation uses JSON-like equality for supported values. |
-| `maxContains` / `minContains` | ✓ |  | Array metadata. |
+| `maxContains` / `minContains` | ✓ | ◐ | With typed `contains` validation. |
 | `maxProperties` / `minProperties` | ✓ | ✓ | Object metadata. |
 | `dependentRequired` | ✓ |  | Object metadata. |
 

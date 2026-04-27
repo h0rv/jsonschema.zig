@@ -199,7 +199,40 @@ fn validateArray(comptime Child: type, input: anytype, writer: anytype, comptime
             ok = false;
         }
     }
+    if (comptime @hasField(@TypeOf(field_meta), "contains")) {
+        const count = containsMatchCount(Child, input, field_meta.contains);
+        const min = comptime if (@hasField(@TypeOf(field_meta), "minContains")) field_meta.minContains else 1;
+        if (count < min) {
+            if (comptime @hasField(@TypeOf(field_meta), "minContains")) {
+                try writer.print("{s}: failed minContains {}\n", .{ path, min });
+            } else {
+                try writer.print("{s}: failed contains\n", .{path});
+            }
+            ok = false;
+        }
+        if (comptime @hasField(@TypeOf(field_meta), "maxContains")) {
+            if (count > field_meta.maxContains) {
+                try writer.print("{s}: failed maxContains {}\n", .{ path, field_meta.maxContains });
+                ok = false;
+            }
+        }
+    }
     return ok;
+}
+
+fn containsMatchCount(comptime Child: type, input: anytype, comptime contains_schema: anytype) usize {
+    var count: usize = 0;
+    for (input) |item| {
+        if (schemaLiteralMatches(Child, item, contains_schema)) count += 1;
+    }
+    return count;
+}
+
+fn schemaLiteralMatches(comptime T: type, input: T, comptime schema_literal: anytype) bool {
+    if (comptime @hasField(@TypeOf(schema_literal), "const")) {
+        return valueEquals(T, input, @field(schema_literal, "const"));
+    }
+    return true;
 }
 
 fn itemsUnique(comptime Child: type, input: anytype) bool {
