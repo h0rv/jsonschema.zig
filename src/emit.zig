@@ -4,6 +4,7 @@ const Options = options_mod.Options;
 const meta = @import("meta.zig");
 const reflect = @import("reflect.zig");
 const write_json = @import("write_json.zig");
+const defs = @import("defs.zig");
 
 const Object = write_json.Object;
 const writeJsonValue = write_json.writeJsonValue;
@@ -15,9 +16,9 @@ fn effectiveOptions(comptime T: type, comptime options: Options) Options {
     var result = options;
     switch (options.use_defs) {
         .always, .never => {},
-        .auto => result.use_defs = if (hasRecursiveSchema(T)) .always else .never,
+        .auto => result.use_defs = if (defs.hasRecursiveSchema(T)) .always else .never,
     }
-    if (result.use_defs == .never and hasRecursiveSchema(T)) {
+    if (result.use_defs == .never and defs.hasRecursiveSchema(T)) {
         @compileError("recursive schemas require use_defs=.auto or .always");
     }
     return result;
@@ -152,8 +153,8 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
                     try writeString(writer, "array");
                     try obj.field(writer, "items");
                     if (defsEnabled(options)) {
-                        if (comptime directRefType(ptr.child)) |Def| {
-                            try refSchema(Def, writer);
+                        if (comptime defs.directRefType(ptr.child)) |Def| {
+                            try defs.refSchema(Def, writer);
                         } else {
                             try schema(ptr.child, writer, options, .{});
                         }
@@ -164,7 +165,7 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
                 .one => switch (@typeInfo(ptr.child)) {
                     .@"struct" => {
                         if (defsEnabled(options)) {
-                            try refSchema(ptr.child, writer);
+                            try defs.refSchema(ptr.child, writer);
                         } else {
                             try emitTypeMetadata(ptr.child, writer, obj, options);
                             try inferredSchema(ptr.child, writer, options, obj);
@@ -184,8 +185,8 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
             try writeString(writer, "array");
             try obj.field(writer, "items");
             if (defsEnabled(options)) {
-                if (comptime directRefType(arr.child)) |Def| {
-                    try refSchema(Def, writer);
+                if (comptime defs.directRefType(arr.child)) |Def| {
+                    try defs.refSchema(Def, writer);
                 } else {
                     try schema(arr.child, writer, options, .{});
                 }
@@ -203,8 +204,8 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
             try obj.field(writer, "anyOf");
             try writer.writeAll("[");
             if (defsEnabled(options)) {
-                if (comptime directRefType(opt.child)) |Def| {
-                    try refSchema(Def, writer);
+                if (comptime defs.directRefType(opt.child)) |Def| {
+                    try defs.refSchema(Def, writer);
                 } else {
                     try schema(opt.child, writer, options, .{});
                 }
@@ -236,8 +237,8 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
                 try obj.field(writer, "additionalProperties");
                 const Value = reflect.mapValueType(T);
                 if (defsEnabled(options)) {
-                    if (comptime directRefType(Value)) |Def| {
-                        try refSchema(Def, writer);
+                    if (comptime defs.directRefType(Value)) |Def| {
+                        try defs.refSchema(Def, writer);
                     } else {
                         try schema(Value, writer, options, .{});
                     }
@@ -303,8 +304,8 @@ fn emitTupleSchema(
     inline for (st.fields, 0..) |field, i| {
         if (i != 0) try writer.writeAll(",");
         if (defsEnabled(options)) {
-            if (comptime directRefType(field.type)) |Def| {
-                try refSchema(Def, writer);
+            if (comptime defs.directRefType(field.type)) |Def| {
+                try defs.refSchema(Def, writer);
             } else {
                 try schema(field.type, writer, options, .{});
             }
@@ -384,8 +385,8 @@ fn unionPayloadSchema(comptime Payload: type, writer: anytype, comptime options:
         try writeJsonValue(bool, writer, false);
         try writer.writeAll("}");
     } else if (defsEnabled(options)) {
-        if (comptime directRefType(Payload)) |Def| {
-            try refSchema(Def, writer);
+        if (comptime defs.directRefType(Payload)) |Def| {
+            try defs.refSchema(Def, writer);
         } else {
             try schema(Payload, writer, options, .{});
         }
@@ -512,7 +513,7 @@ fn fieldSchema(comptime Parent: type, comptime field: std.builtin.Type.StructFie
     if (comptime meta.hasFieldMetadata(Parent, field.name)) {
         const field_meta = meta.fieldMetadata(Parent, field.name);
         if (defsEnabled(options)) {
-            if (comptime directRefType(field.type)) |Def| {
+            if (comptime defs.directRefType(field.type)) |Def| {
                 if (field.defaultValue()) |default_value| {
                     try refSchemaWithZigDefault(Def, writer, options, field_meta, default_value);
                 } else {
@@ -528,11 +529,11 @@ fn fieldSchema(comptime Parent: type, comptime field: std.builtin.Type.StructFie
             try schema(field.type, writer, options, field_meta);
         }
     } else if (defsEnabled(options)) {
-        if (comptime directRefType(field.type)) |Def| {
+        if (comptime defs.directRefType(field.type)) |Def| {
             if (field.defaultValue()) |default_value| {
                 try refSchemaWithZigDefault(Def, writer, options, .{}, default_value);
             } else {
-                try refSchema(Def, writer);
+                try defs.refSchema(Def, writer);
             }
             return;
         }
@@ -550,16 +551,16 @@ fn fieldSchema(comptime Parent: type, comptime field: std.builtin.Type.StructFie
 }
 
 fn emitDefs(comptime T: type, writer: anytype, comptime options: Options, obj: *Object) !void {
-    const defs = comptime collectDefs(T);
-    comptime validateDefNamesUnique(defs);
-    if (defs.len == 0) return;
+    const collected_defs = comptime defs.collectDefs(T);
+    comptime defs.validateDefNamesUnique(collected_defs);
+    if (collected_defs.len == 0) return;
 
     try obj.field(writer, "$defs");
     try writer.writeAll("{");
     var defs_obj: Object = .{};
 
-    inline for (defs) |Def| {
-        try defs_obj.field(writer, defName(Def));
+    inline for (collected_defs) |Def| {
+        try defs_obj.field(writer, defs.defName(Def));
         const def_options = comptime blk: {
             var opts = options;
             opts.use_defs = .always;
@@ -571,17 +572,10 @@ fn emitDefs(comptime T: type, writer: anytype, comptime options: Options, obj: *
     try writer.writeAll("}");
 }
 
-fn refSchema(comptime T: type, writer: anytype) !void {
-    try writer.writeAll("{");
-    var obj: Object = .{};
-    try emitRefField(T, writer, &obj);
-    try writer.writeAll("}");
-}
-
 fn refSchemaWithMeta(comptime T: type, writer: anytype, comptime options: Options, comptime field_meta: anytype) !void {
     try writer.writeAll("{");
     var obj: Object = .{};
-    try emitRefField(T, writer, &obj);
+    try defs.emitRefField(T, writer, &obj);
     try emitKnownMetadata(writer, &obj, field_meta, &meta.field_annotation_keys, options);
     try emitMetadataDefault(writer, &obj, field_meta, options);
     try writer.writeAll("}");
@@ -596,7 +590,7 @@ fn refSchemaWithZigDefault(
 ) !void {
     try writer.writeAll("{");
     var obj: Object = .{};
-    try emitRefField(T, writer, &obj);
+    try defs.emitRefField(T, writer, &obj);
     try emitKnownMetadata(writer, &obj, field_meta, &meta.field_annotation_keys, options);
     try emitMetadataDefault(writer, &obj, field_meta, options);
 
@@ -606,188 +600,6 @@ fn refSchemaWithZigDefault(
     }
 
     try writer.writeAll("}");
-}
-
-fn emitRefField(comptime T: type, writer: anytype, obj: *Object) !void {
-    try obj.field(writer, "$ref");
-    try writer.writeAll("\"#/$defs/");
-    try writeJsonPointerSegmentContent(writer, defName(T));
-    try writer.writeAll("\"");
-}
-
-fn defType(comptime T: type) ?type {
-    return switch (@typeInfo(T)) {
-        .@"struct" => if (isDefStruct(T)) T else null,
-        .optional => |opt| defType(opt.child),
-        .array => |arr| defType(arr.child),
-        .pointer => |ptr| switch (ptr.size) {
-            .slice => defType(ptr.child),
-            .one => directRefType(T),
-            else => null,
-        },
-        else => null,
-    };
-}
-
-fn directRefType(comptime T: type) ?type {
-    return switch (@typeInfo(T)) {
-        .@"struct" => if (isDefStruct(T)) T else null,
-        .pointer => |ptr| switch (ptr.size) {
-            .one => switch (@typeInfo(ptr.child)) {
-                .@"struct" => if (isDefStruct(ptr.child)) ptr.child else null,
-                else => null,
-            },
-            else => null,
-        },
-        else => null,
-    };
-}
-
-fn isDefStruct(comptime T: type) bool {
-    return switch (@typeInfo(T)) {
-        .@"struct" => |st| !st.is_tuple and !reflect.isStringMap(T),
-        else => false,
-    };
-}
-
-fn collectDefs(comptime T: type) []const type {
-    return collectDefsInSchema(T, &[_]type{}, &[_]type{});
-}
-
-fn hasRecursiveSchema(comptime T: type) bool {
-    return hasRecursiveSchemaInner(T, &[_]type{});
-}
-
-fn hasRecursiveSchemaInner(comptime T: type, comptime stack: []const type) bool {
-    return switch (@typeInfo(T)) {
-        .@"struct" => |st| blk: {
-            if (st.is_tuple) break :blk false;
-            if (containsType(stack, T)) break :blk true;
-            const next_stack = stack ++ [_]type{T};
-            inline for (st.fields) |field| {
-                if (hasRecursiveSchemaInner(field.type, next_stack)) break :blk true;
-            }
-            break :blk false;
-        },
-        .@"union" => |un| blk: {
-            if (containsType(stack, T)) break :blk true;
-            const next_stack = stack ++ [_]type{T};
-            inline for (un.fields) |field| {
-                if (field.type != void and hasRecursiveSchemaInner(field.type, next_stack)) break :blk true;
-            }
-            break :blk false;
-        },
-        .optional => |opt| hasRecursiveSchemaInner(opt.child, stack),
-        .array => |arr| hasRecursiveSchemaInner(arr.child, stack),
-        .pointer => |ptr| switch (ptr.size) {
-            .slice, .one => hasRecursiveSchemaInner(ptr.child, stack),
-            else => false,
-        },
-        else => false,
-    };
-}
-
-fn collectDefsInSchema(comptime T: type, comptime defs: []const type, comptime stack: []const type) []const type {
-    return switch (@typeInfo(T)) {
-        .@"struct" => |st| blk: {
-            if (containsType(stack, T)) break :blk defs;
-            const next_stack = stack ++ [_]type{T};
-            var out = defs;
-            inline for (st.fields) |field| out = collectDefsFromField(field.type, out, next_stack);
-            break :blk out;
-        },
-        .@"union" => |un| blk: {
-            if (containsType(stack, T)) break :blk defs;
-            const next_stack = stack ++ [_]type{T};
-            var out = defs;
-            inline for (un.fields) |field| {
-                if (field.type != void) out = collectDefsFromField(field.type, out, next_stack);
-            }
-            break :blk out;
-        },
-        else => defs,
-    };
-}
-
-fn collectDefsFromField(comptime T: type, comptime defs: []const type, comptime stack: []const type) []const type {
-    return switch (@typeInfo(T)) {
-        .@"struct" => |st| blk: {
-            if (comptime reflect.isStringMap(T)) break :blk collectDefsFromField(reflect.mapValueType(T), defs, stack);
-            var out = defs;
-            if (!st.is_tuple and !containsType(out, T)) out = out ++ [_]type{T};
-            out = collectDefsInSchema(T, out, stack);
-            break :blk out;
-        },
-        .@"union" => collectDefsInSchema(T, defs, stack),
-        .optional => |opt| collectDefsFromField(opt.child, defs, stack),
-        .array => |arr| collectDefsFromField(arr.child, defs, stack),
-        .pointer => |ptr| switch (ptr.size) {
-            .slice => collectDefsFromField(ptr.child, defs, stack),
-            .one => collectDefsFromField(ptr.child, defs, stack),
-            else => defs,
-        },
-        else => defs,
-    };
-}
-
-fn validateDefNamesUnique(comptime defs: []const type) void {
-    inline for (defs, 0..) |Def, i| {
-        inline for (defs[0..i]) |Prior| {
-            if (Prior != Def and std.mem.eql(u8, defName(Prior), defName(Def))) {
-                @compileError("jsonschema $defs name collision: '" ++ defName(Def) ++ "'");
-            }
-        }
-    }
-}
-
-fn containsType(comptime haystack: []const type, comptime needle: type) bool {
-    inline for (haystack) |item| {
-        if (item == needle) return true;
-    }
-    return false;
-}
-
-fn defName(comptime T: type) []const u8 {
-    const full = @typeName(T);
-    const last_dot = comptime lastDot(full) orelse return full;
-    const name = full[last_dot + 1 ..];
-    const before_name = full[0..last_dot];
-    const maybe_prev_dot = comptime lastDot(before_name);
-    const prev_dot = maybe_prev_dot orelse return name;
-    const parent = before_name[prev_dot + 1 ..];
-    if (parent.len > 0 and parent[0] == '$') return name;
-    return parent ++ "." ++ name;
-}
-
-fn lastDot(comptime value: []const u8) ?usize {
-    var result: ?usize = null;
-    for (value, 0..) |byte, i| {
-        if (byte == '.') result = i;
-    }
-    return result;
-}
-
-fn writeJsonPointerSegmentContent(writer: anytype, value: []const u8) !void {
-    for (value) |byte| {
-        switch (byte) {
-            '~' => try writer.writeAll("~0"),
-            '/' => try writer.writeAll("~1"),
-            '"' => try writer.writeAll("\\\""),
-            '\\' => try writer.writeAll("\\\\"),
-            '\n' => try writer.writeAll("\\n"),
-            '\r' => try writer.writeAll("\\r"),
-            '\t' => try writer.writeAll("\\t"),
-            0x08 => try writer.writeAll("\\b"),
-            0x0c => try writer.writeAll("\\f"),
-            else => {
-                if (byte < 0x20) {
-                    try writer.print("\\u{x:0>4}", .{byte});
-                } else {
-                    try writer.writeByte(byte);
-                }
-            },
-        }
-    }
 }
 
 fn emitTypeMetadata(comptime T: type, writer: anytype, obj: *Object, comptime options: Options) !void {
