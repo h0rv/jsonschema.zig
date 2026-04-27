@@ -7,6 +7,56 @@ fn expectSchema(comptime T: type, expected: []const u8, comptime options: jsonsc
     try std.testing.expectEqualStrings(expected, schema);
 }
 
+fn expectSchemaJson(comptime T: type, expected: []const u8, comptime options: jsonschema.Options) !void {
+    const schema = try jsonschema.stringifyAlloc(T, std.testing.allocator, options);
+    defer std.testing.allocator.free(schema);
+
+    var actual = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, schema, .{});
+    defer actual.deinit();
+    var wanted = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, expected, .{});
+    defer wanted.deinit();
+
+    try std.testing.expect(jsonValueEql(actual.value, wanted.value));
+}
+
+fn jsonValueEql(a: std.json.Value, b: std.json.Value) bool {
+    if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+    return switch (a) {
+        .null => true,
+        .bool => |v| v == b.bool,
+        .integer => |v| v == b.integer,
+        .float => |v| v == b.float,
+        .number_string => |v| std.mem.eql(u8, v, b.number_string),
+        .string => |v| std.mem.eql(u8, v, b.string),
+        .array => |arr| blk: {
+            if (arr.items.len != b.array.items.len) break :blk false;
+            for (arr.items, b.array.items) |left, right| {
+                if (!jsonValueEql(left, right)) break :blk false;
+            }
+            break :blk true;
+        },
+        .object => |obj| blk: {
+            if (obj.count() != b.object.count()) break :blk false;
+            var it = obj.iterator();
+            while (it.next()) |entry| {
+                const other = b.object.get(entry.key_ptr.*) orelse break :blk false;
+                if (!jsonValueEql(entry.value_ptr.*, other)) break :blk false;
+            }
+            break :blk true;
+        },
+    };
+}
+
+test "semantic schema comparison ignores object key order" {
+    const User = struct { name: []const u8 };
+
+    try expectSchemaJson(
+        User,
+        "{\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"],\"type\":\"object\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}",
+        .{},
+    );
+}
+
 test "validate value reports metadata constraint failures" {
     const User = struct {
         name: []const u8,
