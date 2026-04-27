@@ -174,6 +174,88 @@ pub const Options = struct {
 
 All struct fields are required by default. Zig field defaults are emitted as JSON Schema `default`, and the field stays in `required`.
 
+## Draft 2020-12 support
+
+This package targets JSON Schema Draft 2020-12.
+
+Spec links:
+
+- <https://json-schema.org/draft/2020-12>
+- <https://json-schema.org/draft/2020-12/json-schema-core>
+- <https://json-schema.org/draft/2020-12/json-schema-validation>
+- <https://json-schema.org/draft/2020-12/schema>
+
+This package emits schemas from Zig types. It is not a general JSON Schema validator.
+
+### Core
+
+| Keyword | Emit | Validate | Notes |
+| --- | --- | --- | --- |
+| `$schema` | ✓ |  | Draft URI by default. |
+| `$ref` | ✓ |  | Local `#/$defs` refs only. |
+| `$defs` | ✓ |  | Enabled by `use_defs`. |
+| Boolean schemas |  |  | No bare `true`/`false` schemas. |
+| `$id` |  |  |  |
+| `$anchor` |  |  |  |
+| `$dynamicAnchor` |  |  |  |
+| `$dynamicRef` |  |  |  |
+| `$vocabulary` |  |  |  |
+| `$comment` |  |  |  |
+
+### Applicator
+
+| Keyword | Emit | Validate | Notes |
+| --- | --- | --- | --- |
+| `properties` | ✓ |  | Struct fields. |
+| `required` | ✓ |  | Parsed Zig values cannot represent missing fields. |
+| `additionalProperties` | ✓ |  | Boolean for structs; schema for string-key maps. |
+| `items` | ✓ | ◐ | Arrays and slices. Validation recurses into items. |
+| `prefixItems` | ✓ | ◐ | Tuple structs. |
+| `anyOf` | ✓ | ◐ | Optionals only. |
+| `oneOf` | ✓ | ◐ | Tagged unions only. |
+| `contains` |  |  |  |
+| `patternProperties` |  |  |  |
+| `dependentSchemas` |  |  |  |
+| `propertyNames` |  |  |  |
+| `if` / `then` / `else` |  |  |  |
+| `allOf` |  |  |  |
+| `not` |  |  |  |
+| `unevaluatedItems` |  |  |  |
+| `unevaluatedProperties` |  |  |  |
+
+### Validation
+
+| Keyword | Emit | Validate | Notes |
+| --- | --- | --- | --- |
+| `type` | ✓ |  | String form only; nullable uses `anyOf`. |
+| `enum` | ✓ |  | Zig enum tags. Parsing handles validity. |
+| `const` | ✓ | ✓ | Field metadata `.@"const"`. |
+| `minimum` / `maximum` | ✓ | ✓ | Metadata; optional inferred integer bounds. |
+| `exclusiveMinimum` / `exclusiveMaximum` | ✓ | ✓ | Metadata. |
+| `minLength` / `maxLength` | ✓ | ◐ | Validation uses byte length. |
+| `minItems` / `maxItems` | ✓ | ✓ | Metadata; optional fixed-array inference. |
+| `multipleOf` | ✓ |  | Emit only. |
+| `pattern` | ✓ |  | Emit only. |
+| `uniqueItems` | ✓ |  | Emit only. |
+| `maxContains` / `minContains` |  |  |  |
+| `maxProperties` / `minProperties` |  |  |  |
+| `dependentRequired` |  |  |  |
+
+### Format, annotation, content
+
+| Keyword | Emit | Validate | Notes |
+| --- | --- | --- | --- |
+| `format` | ✓ |  | Annotation only. |
+| `title` | ✓ |  |  |
+| `description` | ✓ |  |  |
+| `default` | ✓ |  | Annotation only. |
+| `deprecated` | ✓ |  |  |
+| `readOnly` / `writeOnly` | ✓ |  |  |
+| `examples` | ✓ |  |  |
+| `contentEncoding` |  |  |  |
+| `contentMediaType` |  |  |  |
+| `contentSchema` |  |  |  |
+
 ## Metadata
 
 Attach metadata with `pub const jsonschema`.
