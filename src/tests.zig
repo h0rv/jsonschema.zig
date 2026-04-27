@@ -115,6 +115,25 @@ test "validate value reports metadata constraint failures" {
     );
 }
 
+test "dependentRequired emits object dependencies" {
+    const Payment = struct {
+        credit_card: ?[]const u8 = null,
+        billing_address: ?[]const u8 = null,
+
+        pub const jsonschema = .{
+            .dependentRequired = .{
+                .credit_card = &.{"billing_address"},
+            },
+        };
+    };
+
+    try expectSchemaJson(
+        Payment,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"dependentRequired\":{\"credit_card\":[\"billing_address\"]},\"type\":\"object\",\"required\":[\"credit_card\",\"billing_address\"],\"properties\":{\"credit_card\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"default\":null},\"billing_address\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}],\"default\":null}},\"additionalProperties\":false}",
+        .{},
+    );
+}
+
 test "object property constraints emit and validate" {
     const Address = struct {
         city: []const u8,

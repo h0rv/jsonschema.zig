@@ -246,6 +246,8 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
             {
                 if (!reflect.isNumber(Value)) @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be number");
                 validateNumberMetadataValue(key, @field(metadata, key), where);
+            } else if (std.mem.eql(u8, key, "dependentRequired")) {
+                validateDependentRequired(@field(metadata, key), where);
             } else if (std.mem.eql(u8, key, "default") or std.mem.eql(u8, key, "const")) {
                 reflect.validateJsonValue(Value);
             } else if (std.mem.eql(u8, key, "examples")) {
@@ -294,6 +296,50 @@ fn validateVocabulary(comptime vocabulary: anytype, comptime where: []const u8) 
     }
 }
 
+fn validateDependentRequired(comptime dependencies: anytype, comptime where: []const u8) void {
+    const Dependencies = @TypeOf(dependencies);
+    switch (@typeInfo(Dependencies)) {
+        .@"struct" => |st| inline for (st.fields) |field| {
+            validateStringArray(@field(dependencies, field.name), "jsonschema " ++ where ++ " key 'dependentRequired' values must be arrays of strings");
+        },
+        else => @compileError("jsonschema " ++ where ++ " key 'dependentRequired' must be a struct literal"),
+    }
+}
+
+fn validateStringArray(comptime value: anytype, comptime message: []const u8) void {
+    const T = @TypeOf(value);
+    switch (@typeInfo(T)) {
+        .array => |arr| {
+            if (!reflect.isString(arr.child)) @compileError(message);
+        },
+        .pointer => |ptr| switch (ptr.size) {
+            .slice => {
+                if (!reflect.isString(ptr.child)) @compileError(message);
+            },
+            .one => switch (@typeInfo(ptr.child)) {
+                .array => |arr| {
+                    if (!reflect.isString(arr.child)) @compileError(message);
+                },
+                .@"struct" => |st| {
+                    if (!st.is_tuple) @compileError(message);
+                    inline for (st.fields) |field| {
+                        if (!reflect.isString(field.type)) @compileError(message);
+                    }
+                },
+                else => @compileError(message),
+            },
+            else => @compileError(message),
+        },
+        .@"struct" => |st| {
+            if (!st.is_tuple) @compileError(message);
+            inline for (st.fields) |field| {
+                if (!reflect.isString(field.type)) @compileError(message);
+            }
+        },
+        else => @compileError(message),
+    }
+}
+
 fn validateTypeConstraintCompatibility(comptime T: type, comptime schema_meta: anytype) void {
     inline for (&vocab.object_constraint_keys) |key| {
         if (@hasField(@TypeOf(schema_meta), key) and !reflect.isObjectLike(T)) {
@@ -326,7 +372,8 @@ fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field
             {
                 if (!reflect.isArrayLike(Base)) @compileError("jsonschema array constraint '" ++ key ++ "' on non-array field '" ++ field_path ++ "'");
             } else if (std.mem.eql(u8, key, "minProperties") or
-                std.mem.eql(u8, key, "maxProperties"))
+                std.mem.eql(u8, key, "maxProperties") or
+                std.mem.eql(u8, key, "dependentRequired"))
             {
                 if (!reflect.isObjectLike(Base)) @compileError("jsonschema object constraint '" ++ key ++ "' on non-object field '" ++ field_path ++ "'");
             }

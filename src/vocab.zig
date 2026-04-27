@@ -27,6 +27,7 @@ pub const emitter_type_keys = [_][]const u8{ "fields", "name", "discriminator" }
 pub const object_constraint_keys = [_][]const u8{
     "minProperties",
     "maxProperties",
+    "dependentRequired",
 };
 
 pub const validation_keys = [_][]const u8{
@@ -44,4 +45,5 @@ pub const validation_keys = [_][]const u8{
     "uniqueItems",
     "minProperties",
     "maxProperties",
+    "dependentRequired",
 };

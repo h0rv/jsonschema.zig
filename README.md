@@ -239,7 +239,7 @@ This package emits schemas from Zig types. It is not a general JSON Schema valid
 | `uniqueItems` | ✓ | ✓ | Typed validation uses JSON-like equality for supported values. |
 | `maxContains` / `minContains` |  |  |  |
 | `maxProperties` / `minProperties` | ✓ | ✓ | Object metadata. |
-| `dependentRequired` |  |  |  |
+| `dependentRequired` | ✓ |  | Object metadata. |
 
 ### Format, annotation, content
 
@@ -270,6 +270,7 @@ pub const jsonschema = .{
     .@"$anchor" = "User",
     .description = "A user profile.",
     .minProperties = 1,
+    .dependentRequired = .{ .email = &.{"name"} },
     .discriminator = "kind", // opt into flattened discriminated-object union schema
     .examples = .{.{ .name = "Ada", .age = 42, .email = null }},
 };
