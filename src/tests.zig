@@ -115,6 +115,31 @@ test "validate value reports metadata constraint failures" {
     );
 }
 
+test "object property constraints emit and validate" {
+    const Address = struct {
+        city: []const u8,
+        zip: []const u8,
+
+        pub const jsonschema = .{
+            .minProperties = 3,
+            .maxProperties = 3,
+        };
+    };
+
+    try expectSchemaJson(
+        Address,
+        "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minProperties\":3,\"maxProperties\":3,\"type\":\"object\",\"required\":[\"city\",\"zip\"],\"properties\":{\"city\":{\"type\":\"string\"},\"zip\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+        .{},
+    );
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    const ok = try jsonschema.validateValue(Address, .{ .city = "Vienna", .zip = "1010" }, &out.writer, .{});
+    try std.testing.expect(!ok);
+    try std.testing.expectEqualStrings("$: failed minProperties 3\n", out.written());
+}
+
 test "validate value accepts valid data and honors field naming" {
     const User = struct {
         first_name: []const u8,

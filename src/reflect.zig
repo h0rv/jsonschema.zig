@@ -259,6 +259,20 @@ pub fn isArrayLike(comptime T: type) bool {
     };
 }
 
+pub fn isObjectLike(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |st| !st.is_tuple,
+        .pointer => |ptr| switch (ptr.size) {
+            .one => switch (@typeInfo(ptr.child)) {
+                .@"struct" => |st| !st.is_tuple,
+                else => false,
+            },
+            else => false,
+        },
+        else => false,
+    };
+}
+
 pub fn isInteger(comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .int, .comptime_int => true,

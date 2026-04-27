@@ -133,6 +133,16 @@ pub fn build(b: *std.Build) void {
         mod,
         target,
         optimize,
+        "min_properties_non_object",
+        "tests/compile_errors/min_properties_non_object.zig",
+        "error: jsonschema object constraint 'minProperties' on non-object field 'min_properties_non_object.Bad.name'",
+    );
+    addCompileErrorTest(
+        b,
+        test_step,
+        mod,
+        target,
+        optimize,
         "examples_wrong_type",
         "tests/compile_errors/examples_wrong_type.zig",
         "error: jsonschema metadata key 'examples' must be an array",

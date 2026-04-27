@@ -3,8 +3,8 @@ const FieldNaming = @import("options.zig").FieldNaming;
 const reflect = @import("reflect.zig");
 const vocab = @import("vocab.zig");
 
-pub const type_meta_keys = vocab.core_keys ++ vocab.annotation_keys;
-const type_meta_keys_with_fields = vocab.core_keys ++ vocab.annotation_keys ++ vocab.emitter_type_keys;
+pub const type_meta_keys = vocab.core_keys ++ vocab.annotation_keys ++ vocab.object_constraint_keys;
+const type_meta_keys_with_fields = vocab.core_keys ++ vocab.annotation_keys ++ vocab.object_constraint_keys ++ vocab.emitter_type_keys;
 pub const field_annotation_keys = vocab.core_keys ++ vocab.annotation_keys;
 pub const field_default_key = vocab.default_key;
 pub const field_const_key = vocab.const_key;
@@ -24,6 +24,7 @@ pub fn validateTypeMetadata(comptime T: type) void {
     validateCoreMetadata(schema_meta, "type metadata");
     validateMetadataValueTypes(schema_meta, &type_meta_keys, "type metadata");
     validateMetadataValueTypes(schema_meta, &[_][]const u8{ "name", "discriminator" }, "type metadata");
+    validateTypeConstraintCompatibility(T, schema_meta);
     validateExamplesCompatibility(T, schema_meta, "type metadata");
 
     if (@hasField(@TypeOf(schema_meta), "fields")) {
@@ -232,7 +233,9 @@ fn validateMetadataValueTypes(comptime metadata: anytype, comptime keys: []const
             } else if (std.mem.eql(u8, key, "minLength") or
                 std.mem.eql(u8, key, "maxLength") or
                 std.mem.eql(u8, key, "minItems") or
-                std.mem.eql(u8, key, "maxItems"))
+                std.mem.eql(u8, key, "maxItems") or
+                std.mem.eql(u8, key, "minProperties") or
+                std.mem.eql(u8, key, "maxProperties"))
             {
                 if (!reflect.isInteger(Value)) @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be integer");
             } else if (std.mem.eql(u8, key, "minimum") or
@@ -291,6 +294,14 @@ fn validateVocabulary(comptime vocabulary: anytype, comptime where: []const u8) 
     }
 }
 
+fn validateTypeConstraintCompatibility(comptime T: type, comptime schema_meta: anytype) void {
+    inline for (&vocab.object_constraint_keys) |key| {
+        if (@hasField(@TypeOf(schema_meta), key) and !reflect.isObjectLike(T)) {
+            @compileError("jsonschema object constraint '" ++ key ++ "' on non-object type '" ++ @typeName(T) ++ "'");
+        }
+    }
+}
+
 fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field_meta: anytype, comptime field_path: []const u8) void {
     const Base = reflect.optionalChild(FieldType);
 
@@ -314,6 +325,10 @@ fn validateFieldConstraintCompatibility(comptime FieldType: type, comptime field
                 std.mem.eql(u8, key, "uniqueItems"))
             {
                 if (!reflect.isArrayLike(Base)) @compileError("jsonschema array constraint '" ++ key ++ "' on non-array field '" ++ field_path ++ "'");
+            } else if (std.mem.eql(u8, key, "minProperties") or
+                std.mem.eql(u8, key, "maxProperties"))
+            {
+                if (!reflect.isObjectLike(Base)) @compileError("jsonschema object constraint '" ++ key ++ "' on non-object field '" ++ field_path ++ "'");
             }
         }
     }

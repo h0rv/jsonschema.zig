@@ -5,6 +5,9 @@ const reflect = @import("reflect.zig");
 
 pub fn value(comptime T: type, input: T, writer: anytype, comptime options: Options) !bool {
     comptime reflect.validateType(T);
+    if (comptime @hasDecl(T, "jsonschema")) {
+        return validateInner(T, input, writer, options, "$", T.jsonschema);
+    }
     return validateInner(T, input, writer, options, "$", .{});
 }
 
@@ -55,6 +58,7 @@ fn validateInner(comptime T: type, input: T, writer: anytype, comptime options: 
             for (input) |item| ok = try validateInner(arr.child, item, writer, options, path ++ "[]", .{}) and ok;
         },
         .@"struct" => |st| {
+            ok = try validateObject(T, input, writer, path, field_meta) and ok;
             if (comptime reflect.isStringMap(T)) return ok;
             if (st.is_tuple) {
                 inline for (st.fields, 0..) |field, i| {
@@ -146,6 +150,33 @@ fn validateString(input: anytype, writer: anytype, comptime path: []const u8, co
         }
     }
     return ok;
+}
+
+fn validateObject(comptime T: type, input: T, writer: anytype, comptime path: []const u8, comptime field_meta: anytype) !bool {
+    var ok = true;
+    const count = objectPropertyCount(T, input);
+    if (comptime @hasField(@TypeOf(field_meta), "minProperties")) {
+        if (count < field_meta.minProperties) {
+            try writer.print("{s}: failed minProperties {}\n", .{ path, field_meta.minProperties });
+            ok = false;
+        }
+    }
+    if (comptime @hasField(@TypeOf(field_meta), "maxProperties")) {
+        if (count > field_meta.maxProperties) {
+            try writer.print("{s}: failed maxProperties {}\n", .{ path, field_meta.maxProperties });
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+fn objectPropertyCount(comptime T: type, input: T) usize {
+    if (comptime reflect.isStringMap(T)) return input.count();
+    comptime var count: usize = 0;
+    inline for (@typeInfo(T).@"struct".fields) |field| {
+        if (comptime !meta.fieldOmitted(T, field.name)) count += 1;
+    }
+    return count;
 }
 
 fn validateArray(comptime Child: type, input: anytype, writer: anytype, comptime path: []const u8, comptime field_meta: anytype) !bool {
