@@ -7,6 +7,15 @@ const meta = @import("meta.zig");
 const reflect = @import("reflect.zig");
 const validate = @import("validate.zig");
 
+/// Runtime JSON Schema validator (Draft 2020-12). Validates arbitrary JSON
+/// instances against arbitrary JSON Schema documents.
+pub const validator = @import("validator.zig");
+pub const Validator = validator.Validator;
+pub const ValidatorOptions = validator.Options;
+pub const ValidationError = validator.ValidationError;
+/// Validate a `std.json.Value` instance against a schema value.
+pub const isValid = validator.isValid;
+
 /// `$defs` emission policy.
 pub const DefMode = options.DefMode;
 /// JSON Schema dialect to emit.
@@ -251,4 +260,8 @@ fn PrettyWriter(comptime Inner: type) type {
             try self.inner.splatByteAll(' ', self.depth * 2);
         }
     };
+}
+
+test {
+    _ = validator;
 }

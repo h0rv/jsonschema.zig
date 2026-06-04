@@ -51,11 +51,28 @@ pub fn build(b: *std.Build) void {
     const exe_tests = b.addTest(.{ .root_module = exe.root_module });
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
+    // Official JSON-Schema-Test-Suite runner.
+    const suite_runner = b.addExecutable(.{
+        .name = "suite-runner",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/suite_runner.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "jsonschema", .module = mod }},
+        }),
+    });
+    const run_suite = b.addRunArtifact(suite_runner);
+    run_suite.setCwd(b.path("."));
+    if (b.args) |args| run_suite.addArgs(args);
+    const suite_step = b.step("suite", "Run the official JSON Schema test suite");
+    suite_step.dependOn(&run_suite.step);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_lib_tests.step);
     test_step.dependOn(&run_schema_tests.step);
     test_step.dependOn(&run_external_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_suite.step);
 
     addCompileErrorTest(
         b,

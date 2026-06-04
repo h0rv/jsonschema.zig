@@ -23,6 +23,14 @@ depends = ["fmt-check"]
 description = "Run test suite"
 run = "zig build test"
 
+[tasks.suite]
+description = "Run the official JSON Schema conformance suite (required tests)"
+run = "zig build suite"
+
+[tasks.suite-all]
+description = "Run the conformance suite including optional and format groups"
+run = "zig build suite -- --format"
+
 [tasks.run]
 description = "Run example binary"
 run = "zig build run"
