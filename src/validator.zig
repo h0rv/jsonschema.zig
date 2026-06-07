@@ -5,6 +5,13 @@ const std = @import("std");
 const core = @import("validator/core.zig");
 
 pub const Validator = core.Validator;
+/// A compiled schema is a `Validator` that has been set up (via `compile` or
+/// `setRootSchema`) and is then only read. Validate it concurrently from many
+/// threads with `validateScratch`, each passing its own scratch allocator.
+pub const CompiledSchema = core.Validator;
+/// Compile a schema once for repeated/concurrent validation. Equivalent to
+/// `Validator.init` followed by `setRootSchema`.
+pub const compile = core.Validator.compile;
 pub const Options = core.Options;
 pub const ValidationError = core.ValidationError;
 
@@ -255,4 +262,78 @@ test "public API: max_depth is configurable" {
     try v.setRootSchema(&schema.value);
     // A self-`$ref` on an unchanging instance exhausts the configured depth.
     try std.testing.expectError(error.RecursionLimit, v.validate(&instance.value, null));
+}
+
+test "CompiledSchema: compile once, validate many instances" {
+    const a = std.testing.allocator;
+    const schema = try std.json.parseFromSlice(std.json.Value, a,
+        \\{"type":"object","required":["name"],
+        \\ "properties":{"name":{"type":"string","pattern":"^[a-z]+$"}}}
+    , .{});
+    defer schema.deinit();
+
+    var cs = try compile(a, &schema.value, .{});
+    defer cs.deinit();
+
+    const ok = try std.json.parseFromSlice(std.json.Value, a, "{\"name\":\"ada\"}", .{});
+    defer ok.deinit();
+    const bad = try std.json.parseFromSlice(std.json.Value, a, "{\"name\":\"Ada1\"}", .{});
+    defer bad.deinit();
+
+    var scratch = std.heap.ArenaAllocator.init(a);
+    defer scratch.deinit();
+    try std.testing.expect(try cs.validateScratch(&ok.value, scratch.allocator(), null));
+    _ = scratch.reset(.retain_capacity);
+    try std.testing.expect(!try cs.validateScratch(&bad.value, scratch.allocator(), null));
+}
+
+test "CompiledSchema: concurrent validateScratch on one shared schema" {
+    const a = std.testing.allocator;
+    const schema = try std.json.parseFromSlice(std.json.Value, a,
+        \\{"type":"object","required":["id"],
+        \\ "properties":{"id":{"type":"integer","minimum":0},
+        \\               "tag":{"type":"string","pattern":"^[a-z0-9_]+$"}}}
+    , .{});
+    defer schema.deinit();
+
+    var cs = try compile(a, &schema.value, .{});
+    defer cs.deinit();
+
+    const Worker = struct {
+        fn run(compiled: *const CompiledSchema, gpa: std.mem.Allocator, ok_out: *bool) void {
+            var arena = std.heap.ArenaAllocator.init(gpa);
+            defer arena.deinit();
+            const good = std.json.parseFromSlice(std.json.Value, gpa, "{\"id\":1,\"tag\":\"abc_9\"}", .{}) catch {
+                ok_out.* = false;
+                return;
+            };
+            defer good.deinit();
+            const bad = std.json.parseFromSlice(std.json.Value, gpa, "{\"id\":-1,\"tag\":\"BAD\"}", .{}) catch {
+                ok_out.* = false;
+                return;
+            };
+            defer bad.deinit();
+            var all = true;
+            var i: usize = 0;
+            while (i < 500) : (i += 1) {
+                _ = arena.reset(.retain_capacity);
+                const v1 = compiled.validateScratch(&good.value, arena.allocator(), null) catch break;
+                const v2 = compiled.validateScratch(&bad.value, arena.allocator(), null) catch break;
+                if (!v1 or v2) {
+                    all = false;
+                    break;
+                }
+            }
+            ok_out.* = all;
+        }
+    };
+
+    var ok1 = false;
+    var ok2 = false;
+    const t1 = try std.Thread.spawn(.{}, Worker.run, .{ &cs, a, &ok1 });
+    const t2 = try std.Thread.spawn(.{}, Worker.run, .{ &cs, a, &ok2 });
+    t1.join();
+    t2.join();
+    try std.testing.expect(ok1);
+    try std.testing.expect(ok2);
 }

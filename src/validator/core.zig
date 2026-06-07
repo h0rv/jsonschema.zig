@@ -85,17 +85,90 @@ pub const Validator = struct {
         self.root = root;
         self.root_base = base;
         try self.registry.addResource(self.opts.default_base_uri, root);
+        // Compile every `pattern`/`patternProperties` regex up front so that
+        // `validate` only reads the cache (keeping it read-only and thread-safe).
+        self.precompileRegexes();
+    }
+
+    /// Build a `Validator` and set its root schema in one step. The returned
+    /// value is an immutable compiled schema: validate it concurrently from many
+    /// threads with `validateScratch`, each passing its own scratch allocator.
+    pub fn compile(gpa: std.mem.Allocator, root: *const Value, opts: Options) !Validator {
+        var v = try Validator.init(gpa, opts);
+        errdefer v.deinit();
+        try v.setRootSchema(root);
+        return v;
+    }
+
+    /// Eagerly compile all regexes referenced by the indexed schema. Uses the
+    /// registry's node set, so it sees exactly the real schema positions.
+    fn precompileRegexes(self: *Validator) void {
+        var it = self.registry.node_bases.keyIterator();
+        while (it.next()) |node_ptr| {
+            const node = node_ptr.*;
+            if (node.* != .object) continue;
+            const obj = node.object;
+            if (obj.getPtr("pattern")) |pv| {
+                if (pv.* == .string) self.ensureRegex(pv.string);
+            }
+            if (obj.getPtr("patternProperties")) |pp| {
+                if (pp.* == .object) {
+                    var pit = pp.object.iterator();
+                    while (pit.next()) |e| self.ensureRegex(e.key_ptr.*);
+                }
+            }
+        }
+    }
+
+    /// Compile `pattern` into the shared cache if not already present. Values are
+    /// owned via `gpa` (freed in `deinit`); keys live in the validator arena.
+    /// Invalid patterns are skipped (validation treats them as non-asserting).
+    fn ensureRegex(self: *Validator, pattern: []const u8) void {
+        if (self.regex_cache.contains(pattern)) return;
+        var compiled = regex.compile(self.gpa, pattern, self.opts.regex_limits) catch return;
+        const ptr = self.gpa.create(regex.Regex) catch {
+            compiled.deinit();
+            return;
+        };
+        ptr.* = compiled;
+        const key = self.arena.dupe(u8, pattern) catch {
+            ptr.deinit();
+            self.gpa.destroy(ptr);
+            return;
+        };
+        self.regex_cache.put(self.arena, key, ptr) catch {
+            ptr.deinit();
+            self.gpa.destroy(ptr);
+        };
     }
 
     /// Validate `instance`; returns true if valid. Errors are written into
-    /// `errors_out` (in the validator arena) when provided.
+    /// `errors_out` (in the validator arena) when provided. Convenience wrapper
+    /// over `validateScratch` using the validator's own arena as scratch.
     pub fn validate(
-        self: *Validator,
+        self: *const Validator,
         instance: *const Value,
         errors_out: ?*std.ArrayListUnmanaged(ValidationError),
     ) !bool {
+        return self.validateScratch(instance, self.arena, errors_out);
+    }
+
+    /// Validate `instance`, using `scratch` for all per-call allocations (error
+    /// messages, ref-resolution strings, and any regex not precompiled).
+    ///
+    /// The validator is only read, so a single `*const Validator` (a compiled
+    /// schema) may be validated concurrently from several threads, each passing
+    /// its own `scratch`. Error strings are owned by `scratch`. The validator's
+    /// `gpa` must be thread-safe, since transient evaluation state is allocated
+    /// and freed through it.
+    pub fn validateScratch(
+        self: *const Validator,
+        instance: *const Value,
+        scratch: std.mem.Allocator,
+        errors_out: ?*std.ArrayListUnmanaged(ValidationError),
+    ) !bool {
         var ctx: Ctx = .{
-            .v = self,
+            .scratch = scratch,
             .errors = errors_out,
             .path = .empty,
             .vocab = .{ .format_assertion = self.opts.assert_format },
@@ -120,7 +193,9 @@ pub const Validator = struct {
     };
 
     const Ctx = struct {
-        v: *Validator,
+        /// Per-call allocator for error messages, ref resolution, and any regex
+        /// not already compiled into the schema. Never touches shared state.
+        scratch: std.mem.Allocator,
         errors: ?*std.ArrayListUnmanaged(ValidationError),
         path: std.ArrayListUnmanaged(u8),
         scope: std.ArrayListUnmanaged([]const u8) = .empty,
@@ -131,9 +206,9 @@ pub const Validator = struct {
         fn fail(self: *Ctx, comptime fmts: []const u8, args: anytype) !void {
             if (self.silent > 0) return;
             const sink = self.errors orelse return;
-            const msg = try std.fmt.allocPrint(self.v.arena, fmts, args);
-            const p = try self.v.arena.dupe(u8, self.path.items);
-            try sink.append(self.v.arena, .{ .instance_path = p, .message = msg });
+            const msg = try std.fmt.allocPrint(self.scratch, fmts, args);
+            const p = try self.scratch.dupe(u8, self.path.items);
+            try sink.append(self.scratch, .{ .instance_path = p, .message = msg });
         }
 
         /// Append "/<index>" to the instance path; returns the prior length.
@@ -205,7 +280,7 @@ pub const Validator = struct {
     /// Evaluate `schema` (object or boolean) against `instance`. When `eval` is
     /// non-null, records annotations for the current instance into it.
     fn evalSchema(
-        self: *Validator,
+        self: *const Validator,
         schema: *const Value,
         parent_base: []const u8,
         instance: *const Value,
@@ -235,7 +310,7 @@ pub const Validator = struct {
             base = b;
         } else if (obj.getPtr("$id")) |idv| {
             if (idv.* == .string) {
-                const resolved = try uri.resolve(self.arena, parent_base, idv.string);
+                const resolved = try uri.resolve(ctx.scratch, parent_base, idv.string);
                 base = uri.withoutFragment(resolved);
             }
         }
@@ -272,7 +347,7 @@ pub const Validator = struct {
 
     /// Determine active vocabularies from a `$schema` metaschema URI. Unknown or
     /// unregistered metaschemas default to the full standard dialect.
-    fn resolveVocab(self: *Validator, schema_uri: []const u8) Vocab {
+    fn resolveVocab(self: *const Validator, schema_uri: []const u8) Vocab {
         const is_2020 = std.mem.indexOf(u8, schema_uri, "draft/2020-12") != null;
         const fallback: Vocab = .{ .format_assertion = self.opts.assert_format, .dialect_2020 = is_2020 };
 
@@ -304,7 +379,7 @@ pub const Validator = struct {
     }
 
     fn applyKeywords(
-        self: *Validator,
+        self: *const Validator,
         obj: jv.Object,
         base: []const u8,
         instance: *const Value,
@@ -343,9 +418,9 @@ pub const Validator = struct {
 
     // ---------- references ----------
 
-    fn applyRef(self: *Validator, ref: []const u8, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
-        const abs = try uri.resolve(self.arena, base, ref);
-        const resolved = self.registry.resolveAbsolute(abs) orelse {
+    fn applyRef(self: *const Validator, ref: []const u8, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
+        const abs = try uri.resolve(ctx.scratch, base, ref);
+        const resolved = self.registry.resolveAbsolute(ctx.scratch, abs) orelse {
             try ctx.fail("cannot resolve $ref '{s}'", .{ref});
             return false;
         };
@@ -356,9 +431,9 @@ pub const Validator = struct {
         return valid;
     }
 
-    fn applyDynamicRef(self: *Validator, ref: []const u8, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
-        const abs = try uri.resolve(self.arena, base, ref);
-        const resolved = self.registry.resolveAbsolute(abs) orelse {
+    fn applyDynamicRef(self: *const Validator, ref: []const u8, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
+        const abs = try uri.resolve(ctx.scratch, base, ref);
+        const resolved = self.registry.resolveAbsolute(ctx.scratch, abs) orelse {
             try ctx.fail("cannot resolve $dynamicRef '{s}'", .{ref});
             return false;
         };
@@ -370,9 +445,9 @@ pub const Validator = struct {
         // defines that same $dynamicAnchor.
         if (uri.fragment(abs)) |frag| {
             if (frag.len > 0 and frag[0] != '/') {
-                if (self.registry.dynamicAnchor(resolved.base, frag) != null) {
+                if (self.registry.dynamicAnchor(ctx.scratch, resolved.base, frag) != null) {
                     for (ctx.scope.items) |frame| {
-                        if (self.registry.dynamicAnchor(frame, frag)) |node| {
+                        if (self.registry.dynamicAnchor(ctx.scratch, frame, frag)) |node| {
                             target = node;
                             target_base = frame;
                             break;
@@ -390,7 +465,7 @@ pub const Validator = struct {
 
     // ---------- type / enum / const ----------
 
-    fn applyType(self: *Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
+    fn applyType(self: *const Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
         _ = self;
         const tv = obj.getPtr("type") orelse return true;
         switch (tv.*) {
@@ -410,7 +485,7 @@ pub const Validator = struct {
         }
     }
 
-    fn applyEnumConst(self: *Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
+    fn applyEnumConst(self: *const Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
         _ = self;
         var ok = true;
         if (obj.getPtr("const")) |cv| {
@@ -439,7 +514,7 @@ pub const Validator = struct {
 
     // ---------- numeric ----------
 
-    fn applyNumeric(self: *Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
+    fn applyNumeric(self: *const Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
         const num = jv.asNumber(instance) orelse return true;
         var ok = true;
         if (obj.getPtr("multipleOf")) |mv| {
@@ -474,7 +549,7 @@ pub const Validator = struct {
 
     /// `multipleOf` check, using exact big-integer arithmetic when either operand
     /// is a `number_string` (i.e. it overflowed f64), else fast float math.
-    fn checkMultipleOf(self: *Validator, instance: *const Value, mv: *const Value, x: f64, d: f64) Error!bool {
+    fn checkMultipleOf(self: *const Validator, instance: *const Value, mv: *const Value, x: f64, d: f64) Error!bool {
         const overflow = !std.math.isFinite(x / d);
         if (instance.* == .number_string or mv.* == .number_string or overflow) {
             var xbuf: [768]u8 = undefined;
@@ -492,7 +567,7 @@ pub const Validator = struct {
 
     // ---------- string ----------
 
-    fn applyString(self: *Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
+    fn applyString(self: *const Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
         if (instance.* != .string) return true;
         const s = instance.string;
         var ok = true;
@@ -506,7 +581,7 @@ pub const Validator = struct {
         };
         if (obj.getPtr("pattern")) |pv| {
             if (pv.* == .string) {
-                if (!self.matchPattern(pv.string, s)) {
+                if (!self.matchPattern(ctx, pv.string, s)) {
                     try ctx.fail("string does not match pattern", .{});
                     ok = false;
                 }
@@ -515,35 +590,25 @@ pub const Validator = struct {
         return ok;
     }
 
-    fn matchPattern(self: *Validator, pattern: []const u8, s: []const u8) bool {
-        const re = self.getRegex(pattern) orelse return true; // invalid regex: don't assert
+    fn matchPattern(self: *const Validator, ctx: *Ctx, pattern: []const u8, s: []const u8) bool {
+        const re = self.getRegex(ctx, pattern) orelse return true; // invalid regex: don't assert
         return re.matches(s);
     }
 
-    fn getRegex(self: *Validator, pattern: []const u8) ?*regex.Regex {
+    /// Look up a precompiled regex (read-only). Patterns are compiled eagerly in
+    /// `precompileRegexes`, so this normally just reads the shared cache. As a
+    /// fallback for anything not precompiled, it compiles into the per-call
+    /// `scratch` without mutating the shared cache, so `validate` stays read-only.
+    fn getRegex(self: *const Validator, ctx: *Ctx, pattern: []const u8) ?*regex.Regex {
         if (self.regex_cache.get(pattern)) |re| return re;
-        var compiled = regex.compile(self.gpa, pattern, self.opts.regex_limits) catch return null;
-        const ptr = self.gpa.create(regex.Regex) catch {
-            compiled.deinit();
-            return null;
-        };
-        ptr.* = compiled;
-        const key = self.arena.dupe(u8, pattern) catch {
-            ptr.deinit();
-            self.gpa.destroy(ptr);
-            return null;
-        };
-        self.regex_cache.put(self.arena, key, ptr) catch {
-            ptr.deinit();
-            self.gpa.destroy(ptr);
-            return null;
-        };
+        const ptr = ctx.scratch.create(regex.Regex) catch return null;
+        ptr.* = regex.compile(ctx.scratch, pattern, self.opts.regex_limits) catch return null;
         return ptr;
     }
 
     // ---------- arrays ----------
 
-    fn applyArray(self: *Validator, obj: jv.Object, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
+    fn applyArray(self: *const Validator, obj: jv.Object, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
         if (instance.* != .array) return true;
         const items = instance.array.items;
         var ok = true;
@@ -628,7 +693,7 @@ pub const Validator = struct {
 
     // ---------- objects ----------
 
-    fn applyObjectKeywords(self: *Validator, obj: jv.Object, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
+    fn applyObjectKeywords(self: *const Validator, obj: jv.Object, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
         if (instance.* != .object) return true;
         const inst = instance.object;
         const app = ctx.vocab.applicator;
@@ -712,7 +777,7 @@ pub const Validator = struct {
                 var it = pv.object.iterator();
                 while (it.next()) |e| {
                     for (inst.keys()) |key| {
-                        if (self.matchPattern(e.key_ptr.*, key)) {
+                        if (self.matchPattern(ctx, e.key_ptr.*, key)) {
                             const child = inst.getPtr(key).?;
                             const saved = try ctx.enterKey(self.gpa, key);
                             const v = try self.evalSchema(e.value_ptr, base, child, ctx, null);
@@ -738,7 +803,7 @@ pub const Validator = struct {
                     var matched = false;
                     var it = pp.object.iterator();
                     while (it.next()) |e| {
-                        if (self.matchPattern(e.key_ptr.*, key)) {
+                        if (self.matchPattern(ctx, e.key_ptr.*, key)) {
                             matched = true;
                             break;
                         }
@@ -799,7 +864,7 @@ pub const Validator = struct {
 
     // ---------- in-place applicators ----------
 
-    fn applyInPlace(self: *Validator, obj: jv.Object, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
+    fn applyInPlace(self: *const Validator, obj: jv.Object, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
         var ok = true;
 
         if (obj.getPtr("allOf")) |av| {
@@ -898,7 +963,7 @@ pub const Validator = struct {
 
     // ---------- unevaluated ----------
 
-    fn applyUnevaluated(self: *Validator, obj: jv.Object, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
+    fn applyUnevaluated(self: *const Validator, obj: jv.Object, base: []const u8, instance: *const Value, ctx: *Ctx, local: *Eval) !bool {
         if (!ctx.vocab.unevaluated) return true;
         var ok = true;
 
@@ -936,7 +1001,7 @@ pub const Validator = struct {
 
     // ---------- format ----------
 
-    fn applyFormat(self: *Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
+    fn applyFormat(self: *const Validator, obj: jv.Object, instance: *const Value, ctx: *Ctx) !bool {
         _ = self;
         if (!ctx.vocab.format_assertion) return true;
         const fv = obj.getPtr("format") orelse return true;

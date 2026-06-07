@@ -11,6 +11,10 @@ const validate = @import("validate.zig");
 /// instances against arbitrary JSON Schema documents.
 pub const validator = @import("validator.zig");
 pub const Validator = validator.Validator;
+/// Compile a schema once, then validate many instances (optionally concurrently
+/// from multiple threads) with `validateScratch`.
+pub const CompiledSchema = validator.CompiledSchema;
+pub const compile = validator.compile;
 pub const ValidatorOptions = validator.Options;
 pub const ValidationError = validator.ValidationError;
 /// Validate a `std.json.Value` instance against a schema value.

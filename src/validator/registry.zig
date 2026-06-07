@@ -124,7 +124,9 @@ pub const Registry = struct {
     }
 
     /// Resolve an absolute reference URI to a target schema node and its base.
-    pub fn resolveAbsolute(self: *Registry, abs: []const u8) ?Resolved {
+    /// Read-only: transient strings are allocated in `scratch`, so the registry
+    /// can be shared across threads during validation.
+    pub fn resolveAbsolute(self: *const Registry, scratch: std.mem.Allocator, abs: []const u8) ?Resolved {
         const base = uri.withoutFragment(abs);
         const frag = uri.fragment(abs);
 
@@ -136,25 +138,26 @@ pub const Registry = struct {
         if (f.len > 0 and f[0] == '/') {
             // JSON pointer fragment, relative to the resource at `base`.
             const root = self.bases.get(base) orelse return null;
-            const decoded = uri.percentDecode(self.arena, f) catch return null;
-            const target = navigatePointer(self.arena, root, decoded) orelse return null;
+            const decoded = uri.percentDecode(scratch, f) catch return null;
+            const target = navigatePointer(scratch, root, decoded) orelse return null;
             return .{ .schema = target, .base = base };
         }
         // Plain-name anchor.
-        const decoded = uri.percentDecode(self.arena, f) catch return null;
-        const key = std.mem.concat(self.arena, u8, &.{ base, "#", decoded }) catch return null;
+        const decoded = uri.percentDecode(scratch, f) catch return null;
+        const key = std.mem.concat(scratch, u8, &.{ base, "#", decoded }) catch return null;
         if (self.anchors.get(key)) |node| return .{ .schema = node, .base = base };
         return null;
     }
 
     /// Canonical base URI for a schema node, if it was indexed.
-    pub fn nodeBase(self: *Registry, node: *const Value) ?[]const u8 {
+    pub fn nodeBase(self: *const Registry, node: *const Value) ?[]const u8 {
         return self.node_bases.get(node);
     }
 
-    /// Look up a $dynamicAnchor named `name` within resource `base`.
-    pub fn dynamicAnchor(self: *Registry, base: []const u8, name: []const u8) ?*const Value {
-        const key = std.mem.concat(self.arena, u8, &.{ base, "#", name }) catch return null;
+    /// Look up a $dynamicAnchor named `name` within resource `base`. Read-only;
+    /// the lookup key is allocated in `scratch`.
+    pub fn dynamicAnchor(self: *const Registry, scratch: std.mem.Allocator, base: []const u8, name: []const u8) ?*const Value {
+        const key = std.mem.concat(scratch, u8, &.{ base, "#", name }) catch return null;
         return self.dynamic_anchors.get(key);
     }
 };
