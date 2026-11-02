@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
     const run_step = b.step("run", "Run schema demo");
     run_step.dependOn(&run_cmd.step);
 
@@ -63,7 +63,7 @@ pub fn build(b: *std.Build) void {
     });
     const run_suite = b.addRunArtifact(suite_runner);
     run_suite.setCwd(b.path("."));
-    if (b.args) |args| run_suite.addArgs(args);
+    run_suite.addPassthruArgs();
     const suite_step = b.step("suite", "Run the official JSON Schema test suite");
     suite_step.dependOn(&run_suite.step);
 

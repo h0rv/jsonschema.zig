@@ -39,38 +39,38 @@ pub fn writeString(writer: anytype, value: []const u8) !void {
     try writer.writeAll("\"");
 }
 
-fn writeExternalUnionValue(comptime un: std.builtin.Type.Union, writer: anytype, value: anytype) !void {
+fn writeExternalUnionValue(comptime un: std.lang.Type.Union, writer: anytype, value: anytype) !void {
     try writer.writeAll("{");
     var obj: Object = .{};
     const tag_name = @tagName(value);
-    inline for (un.fields) |field| {
-        if (std.mem.eql(u8, field.name, tag_name)) {
-            try obj.field(writer, field.name);
-            if (field.type == void) {
+    inline for (un.field_names, un.field_types) |field_name, FieldType| {
+        if (std.mem.eql(u8, field_name, tag_name)) {
+            try obj.field(writer, field_name);
+            if (FieldType == void) {
                 try writer.writeAll("{}");
             } else {
-                try writeJsonValue(field.type, writer, @field(value, field.name));
+                try writeJsonValue(FieldType, writer, @field(value, field_name));
             }
         }
     }
     try writer.writeAll("}");
 }
 
-fn writeDiscriminatorUnionValue(comptime T: type, comptime un: std.builtin.Type.Union, writer: anytype, value: T) !void {
+fn writeDiscriminatorUnionValue(comptime T: type, comptime un: std.lang.Type.Union, writer: anytype, value: T) !void {
     try writer.writeAll("{");
     var obj: Object = .{};
     const tag_name = @tagName(value);
     const discriminator = comptime meta.unionDiscriminator(T);
     try obj.field(writer, discriminator);
     try writeString(writer, tag_name);
-    inline for (un.fields) |field| {
-        if (std.mem.eql(u8, field.name, tag_name)) {
-            if (field.type != void) {
-                if (comptime unionPayloadIsStruct(field.type)) {
-                    try writeUnionStructPayloadFields(field.type, writer, &obj, @field(value, field.name));
+    inline for (un.field_names, un.field_types) |field_name, FieldType| {
+        if (std.mem.eql(u8, field_name, tag_name)) {
+            if (FieldType != void) {
+                if (comptime unionPayloadIsStruct(FieldType)) {
+                    try writeUnionStructPayloadFields(FieldType, writer, &obj, @field(value, field_name));
                 } else {
                     try obj.field(writer, "value");
-                    try writeJsonValue(field.type, writer, @field(value, field.name));
+                    try writeJsonValue(FieldType, writer, @field(value, field_name));
                 }
             }
         }
@@ -86,10 +86,11 @@ fn unionPayloadIsStruct(comptime T: type) bool {
 }
 
 fn writeUnionStructPayloadFields(comptime T: type, writer: anytype, obj: *Object, value: T) !void {
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (comptime meta.fieldOmitted(T, field.name)) continue;
-        try obj.field(writer, comptime meta.schemaFieldName(T, field.name, .identity));
-        try writeJsonValue(field.type, writer, @field(value, field.name));
+    const info = @typeInfo(T).@"struct";
+    inline for (info.field_names, info.field_types) |field_name, FieldType| {
+        if (comptime meta.fieldOmitted(T, field_name)) continue;
+        try obj.field(writer, comptime meta.schemaFieldName(T, field_name, .identity));
+        try writeJsonValue(FieldType, writer, @field(value, field_name));
     }
 }
 
@@ -160,18 +161,18 @@ pub fn writeJsonValue(comptime T: type, writer: anytype, value: T) anyerror!void
         .@"struct" => |st| {
             if (st.is_tuple) {
                 try writer.writeAll("[");
-                inline for (st.fields, 0..) |field, i| {
+                inline for (st.field_names, st.field_types, 0..) |field_name, FieldType, i| {
                     if (i != 0) try writer.writeAll(",");
-                    try writeJsonValue(field.type, writer, @field(value, field.name));
+                    try writeJsonValue(FieldType, writer, @field(value, field_name));
                 }
                 try writer.writeAll("]");
             } else {
                 try writer.writeAll("{");
                 var obj: Object = .{};
-                inline for (st.fields) |field| {
-                    if (comptime meta.fieldOmitted(T, field.name)) continue;
-                    try obj.field(writer, comptime meta.schemaFieldName(T, field.name, .identity));
-                    try writeJsonValue(field.type, writer, @field(value, field.name));
+                inline for (st.field_names, st.field_types) |field_name, FieldType| {
+                    if (comptime meta.fieldOmitted(T, field_name)) continue;
+                    try obj.field(writer, comptime meta.schemaFieldName(T, field_name, .identity));
+                    try writeJsonValue(FieldType, writer, @field(value, field_name));
                 }
                 try writer.writeAll("}");
             }

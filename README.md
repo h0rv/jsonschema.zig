@@ -1,6 +1,6 @@
 # jsonschema.zig
 
-[![Zig](https://img.shields.io/badge/zig-0.16.0%2B-orange.svg)](https://ziglang.org/download/)
+[![Zig](https://img.shields.io/badge/zig-0.17.0-orange.svg)](https://ziglang.org/download/)
 [![Draft 2020-12](https://img.shields.io/badge/JSON%20Schema-Draft%202020--12-blue.svg)](https://json-schema.org/draft/2020-12)
 [![Conformance](https://img.shields.io/badge/test--suite-100%25-brightgreen.svg)](#conformance)
 
@@ -28,7 +28,7 @@ exe.root_module.addImport("jsonschema", dep.module("jsonschema"));
 ```
 
 The module name is `jsonschema`; the root source file is `src/jsonschema.zig`.
-Requires Zig 0.16.0+.
+Requires Zig 0.17.0.
 
 ## Validate JSON against a schema
 

@@ -223,9 +223,9 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
             try writeString(writer, "string");
             try obj.field(writer, "enum");
             try writer.writeAll("[");
-            inline for (enm.fields, 0..) |field, i| {
+            inline for (enm.field_names, 0..) |field_name, i| {
                 if (i != 0) try writer.writeAll(",");
-                try writeString(writer, field.name);
+                try writeString(writer, field_name);
             }
             try writer.writeAll("]");
         },
@@ -260,14 +260,14 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
                 try obj.field(writer, "required");
                 try writer.writeAll("[");
                 var first_required = true;
-                inline for (st.fields) |field| {
-                    if (comptime !meta.fieldOmitted(T, field.name) and meta.fieldRequired(T, field.name, options.require_all_fields)) {
+                inline for (st.field_names) |field_name| {
+                    if (comptime !meta.fieldOmitted(T, field_name) and meta.fieldRequired(T, field_name, options.require_all_fields)) {
                         if (first_required) {
                             first_required = false;
                         } else {
                             try writer.writeAll(",");
                         }
-                        try writeString(writer, comptime meta.schemaFieldName(T, field.name, options.field_naming));
+                        try writeString(writer, comptime meta.schemaFieldName(T, field_name, options.field_naming));
                     }
                 }
                 try writer.writeAll("]");
@@ -276,10 +276,10 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
             try obj.field(writer, "properties");
             try writer.writeAll("{");
             var props: Object = .{};
-            inline for (st.fields) |field| {
-                if (comptime meta.fieldOmitted(T, field.name)) continue;
-                try props.field(writer, comptime meta.schemaFieldName(T, field.name, options.field_naming));
-                try fieldSchema(T, field, writer, options);
+            inline for (st.field_names, 0..) |field_name, i| {
+                if (comptime meta.fieldOmitted(T, field_name)) continue;
+                try props.field(writer, comptime meta.schemaFieldName(T, field_name, options.field_naming));
+                try fieldSchema(T, i, writer, options);
             }
             try writer.writeAll("}");
 
@@ -291,7 +291,7 @@ fn inferredSchema(comptime T: type, writer: anytype, comptime options: Options, 
 }
 
 fn emitTupleSchema(
-    comptime st: std.builtin.Type.Struct,
+    comptime st: std.lang.Type.Struct,
     writer: anytype,
     comptime options: Options,
     obj: *Object,
@@ -301,29 +301,29 @@ fn emitTupleSchema(
 
     try obj.field(writer, "prefixItems");
     try writer.writeAll("[");
-    inline for (st.fields, 0..) |field, i| {
+    inline for (st.field_types, 0..) |FieldType, i| {
         if (i != 0) try writer.writeAll(",");
         if (defsEnabled(options)) {
-            if (comptime defs.directRefType(field.type)) |Def| {
+            if (comptime defs.directRefType(FieldType)) |Def| {
                 try defs.refSchema(Def, writer);
             } else {
-                try schema(field.type, writer, options, .{});
+                try schema(FieldType, writer, options, .{});
             }
         } else {
-            try schema(field.type, writer, options, .{});
+            try schema(FieldType, writer, options, .{});
         }
     }
     try writer.writeAll("]");
 
     try obj.field(writer, "minItems");
-    try writeJsonValue(usize, writer, st.fields.len);
+    try writeJsonValue(usize, writer, st.field_types.len);
     try obj.field(writer, "maxItems");
-    try writeJsonValue(usize, writer, st.fields.len);
+    try writeJsonValue(usize, writer, st.field_types.len);
 }
 
 fn emitUnionSchema(
     comptime T: type,
-    comptime un: std.builtin.Type.Union,
+    comptime un: std.lang.Type.Union,
     writer: anytype,
     comptime options: Options,
     obj: *Object,
@@ -334,12 +334,12 @@ fn emitUnionSchema(
     try writeString(writer, "object");
     try obj.field(writer, "oneOf");
     try writer.writeAll("[");
-    inline for (un.fields, 0..) |field, i| {
+    inline for (un.field_names, un.field_types, 0..) |field_name, FieldType, i| {
         if (i != 0) try writer.writeAll(",");
         if (comptime meta.hasUnionDiscriminator(T)) {
-            try emitDiscriminatorUnionVariantObject(field.name, field.type, comptime meta.unionDiscriminator(T), writer, options);
+            try emitDiscriminatorUnionVariantObject(field_name, FieldType, comptime meta.unionDiscriminator(T), writer, options);
         } else {
-            try emitExternalUnionVariantObject(field.name, field.type, writer, options);
+            try emitExternalUnionVariantObject(field_name, FieldType, writer, options);
         }
     }
     try writer.writeAll("]");
@@ -418,11 +418,11 @@ fn emitDiscriminatorUnionVariantObject(
     switch (@typeInfo(Payload)) {
         .void => {},
         .@"struct" => |st| if (!st.is_tuple) {
-            inline for (st.fields) |field| {
-                if (comptime meta.fieldOmitted(Payload, field.name)) continue;
-                if (comptime !meta.fieldRequired(Payload, field.name, options.require_all_fields)) continue;
+            inline for (st.field_names) |field_name| {
+                if (comptime meta.fieldOmitted(Payload, field_name)) continue;
+                if (comptime !meta.fieldRequired(Payload, field_name, options.require_all_fields)) continue;
                 try writer.writeAll(",");
-                try writeString(writer, comptime meta.schemaFieldName(Payload, field.name, options.field_naming));
+                try writeString(writer, comptime meta.schemaFieldName(Payload, field_name, options.field_naming));
             }
         } else {
             try writer.writeAll(",");
@@ -444,10 +444,10 @@ fn emitDiscriminatorUnionVariantObject(
     switch (@typeInfo(Payload)) {
         .void => {},
         .@"struct" => |st| if (!st.is_tuple) {
-            inline for (st.fields) |field| {
-                if (comptime meta.fieldOmitted(Payload, field.name)) continue;
-                try props.field(writer, comptime meta.schemaFieldName(Payload, field.name, options.field_naming));
-                try fieldSchema(Payload, field, writer, options);
+            inline for (st.field_names, 0..) |field_name, i| {
+                if (comptime meta.fieldOmitted(Payload, field_name)) continue;
+                try props.field(writer, comptime meta.schemaFieldName(Payload, field_name, options.field_naming));
+                try fieldSchema(Payload, i, writer, options);
             }
         } else {
             try props.field(writer, "value");
@@ -487,9 +487,9 @@ fn validateUnionVariant(comptime Payload: type, comptime discriminator: []const 
                 return;
             }
             meta.validateSchemaFieldNames(Payload, .identity);
-            inline for (st.fields) |field| {
-                if (comptime meta.fieldOmitted(Payload, field.name)) continue;
-                const emitted = meta.schemaFieldName(Payload, field.name, .identity);
+            inline for (st.field_names) |field_name| {
+                if (comptime meta.fieldOmitted(Payload, field_name)) continue;
+                const emitted = meta.schemaFieldName(Payload, field_name, .identity);
                 if (std.mem.eql(u8, discriminator, emitted)) {
                     @compileError("jsonschema union discriminator conflicts with payload field '" ++ emitted ++ "'");
                 }
@@ -502,19 +502,23 @@ fn validateUnionVariant(comptime Payload: type, comptime discriminator: []const 
 }
 
 fn hasRequiredProperties(comptime T: type, comptime require_all_fields: bool) bool {
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (meta.fieldOmitted(T, field.name)) continue;
-        if (meta.fieldRequired(T, field.name, require_all_fields)) return true;
+    inline for (@typeInfo(T).@"struct".field_names) |field_name| {
+        if (meta.fieldOmitted(T, field_name)) continue;
+        if (meta.fieldRequired(T, field_name, require_all_fields)) return true;
     }
     return false;
 }
 
-fn fieldSchema(comptime Parent: type, comptime field: std.builtin.Type.StructField, writer: anytype, comptime options: Options) anyerror!void {
-    if (comptime meta.hasFieldMetadata(Parent, field.name)) {
-        const field_meta = meta.fieldMetadata(Parent, field.name);
+fn fieldSchema(comptime Parent: type, comptime field_index: usize, writer: anytype, comptime options: Options) anyerror!void {
+    const st = @typeInfo(Parent).@"struct";
+    const field_name = st.field_names[field_index];
+    const FieldType = st.field_types[field_index];
+    const attrs = st.field_attrs[field_index];
+    if (comptime meta.hasFieldMetadata(Parent, field_name)) {
+        const field_meta = meta.fieldMetadata(Parent, field_name);
         if (defsEnabled(options)) {
-            if (comptime defs.directRefType(field.type)) |Def| {
-                if (field.defaultValue()) |default_value| {
+            if (comptime defs.directRefType(FieldType)) |Def| {
+                if (attrs.defaultValue(FieldType)) |default_value| {
                     try refSchemaWithZigDefault(Def, writer, options, field_meta, default_value);
                 } else {
                     try refSchemaWithMeta(Def, writer, options, field_meta);
@@ -523,14 +527,14 @@ fn fieldSchema(comptime Parent: type, comptime field: std.builtin.Type.StructFie
             }
         }
 
-        if (field.defaultValue()) |default_value| {
-            try schemaWithZigDefault(field.type, writer, options, field_meta, default_value);
+        if (attrs.defaultValue(FieldType)) |default_value| {
+            try schemaWithZigDefault(FieldType, writer, options, field_meta, default_value);
         } else {
-            try schema(field.type, writer, options, field_meta);
+            try schema(FieldType, writer, options, field_meta);
         }
     } else if (defsEnabled(options)) {
-        if (comptime defs.directRefType(field.type)) |Def| {
-            if (field.defaultValue()) |default_value| {
+        if (comptime defs.directRefType(FieldType)) |Def| {
+            if (attrs.defaultValue(FieldType)) |default_value| {
                 try refSchemaWithZigDefault(Def, writer, options, .{}, default_value);
             } else {
                 try defs.refSchema(Def, writer);
@@ -538,15 +542,15 @@ fn fieldSchema(comptime Parent: type, comptime field: std.builtin.Type.StructFie
             return;
         }
 
-        if (field.defaultValue()) |default_value| {
-            try schemaWithZigDefault(field.type, writer, options, .{}, default_value);
+        if (attrs.defaultValue(FieldType)) |default_value| {
+            try schemaWithZigDefault(FieldType, writer, options, .{}, default_value);
         } else {
-            try schema(field.type, writer, options, .{});
+            try schema(FieldType, writer, options, .{});
         }
-    } else if (field.defaultValue()) |default_value| {
-        try schemaWithZigDefault(field.type, writer, options, .{}, default_value);
+    } else if (attrs.defaultValue(FieldType)) |default_value| {
+        try schemaWithZigDefault(FieldType, writer, options, .{}, default_value);
     } else {
-        try schema(field.type, writer, options, .{});
+        try schema(FieldType, writer, options, .{});
     }
 }
 

@@ -113,13 +113,13 @@ fn asciiUpper(comptime byte: u8) u8 {
 pub fn validateSchemaFieldNames(comptime T: type, comptime naming: FieldNaming) void {
     const info = @typeInfo(T);
     if (info != .@"struct") return;
-    const fields = info.@"struct".fields;
-    inline for (fields, 0..) |field, i| {
-        if (comptime fieldOmitted(T, field.name)) continue;
-        const name = schemaFieldName(T, field.name, naming);
-        inline for (fields[i + 1 ..]) |other| {
-            if (comptime fieldOmitted(T, other.name)) continue;
-            const other_name = schemaFieldName(T, other.name, naming);
+    const field_names = info.@"struct".field_names;
+    inline for (field_names, 0..) |field_name, i| {
+        if (comptime fieldOmitted(T, field_name)) continue;
+        const name = schemaFieldName(T, field_name, naming);
+        inline for (field_names[i + 1 ..]) |other| {
+            if (comptime fieldOmitted(T, other)) continue;
+            const other_name = schemaFieldName(T, other, naming);
             if (std.mem.eql(u8, name, other_name)) {
                 @compileError("jsonschema duplicate emitted field name '" ++ name ++ "' on " ++ @typeName(T));
             }
@@ -129,8 +129,7 @@ pub fn validateSchemaFieldNames(comptime T: type, comptime naming: FieldNaming) 
 
 fn validateFieldsMetadata(comptime T: type, comptime fields_meta: anytype) void {
     const FieldsMeta = @TypeOf(fields_meta);
-    inline for (@typeInfo(FieldsMeta).@"struct".fields) |meta_field| {
-        const field_name = meta_field.name;
+    inline for (@typeInfo(FieldsMeta).@"struct".field_names) |field_name| {
         if (!reflect.hasStructField(T, field_name)) {
             @compileError("jsonschema metadata references unknown field '" ++ field_name ++ "' on " ++ @typeName(T));
         }
@@ -194,9 +193,9 @@ fn ensureStruct(comptime T: type, comptime where: []const u8) void {
 }
 
 fn validateKnownKeys(comptime Meta: type, comptime allowed: []const []const u8, comptime where: []const u8) void {
-    inline for (@typeInfo(Meta).@"struct".fields) |field| {
-        if (!reflect.contains(allowed, field.name)) {
-            @compileError("unknown jsonschema " ++ where ++ " key '" ++ field.name ++ "'");
+    inline for (@typeInfo(Meta).@"struct".field_names) |field_name| {
+        if (!reflect.contains(allowed, field_name)) {
+            @compileError("unknown jsonschema " ++ where ++ " key '" ++ field_name ++ "'");
         }
     }
 }
@@ -314,8 +313,8 @@ fn validateAnchor(comptime value: anytype, comptime key: []const u8, comptime wh
 fn validateVocabulary(comptime vocabulary: anytype, comptime where: []const u8) void {
     const Vocabulary = @TypeOf(vocabulary);
     switch (@typeInfo(Vocabulary)) {
-        .@"struct" => |st| inline for (st.fields) |field| {
-            if (field.type != bool) @compileError("jsonschema " ++ where ++ " key '$vocabulary' values must be bool");
+        .@"struct" => |st| inline for (st.field_types) |FieldType| {
+            if (FieldType != bool) @compileError("jsonschema " ++ where ++ " key '$vocabulary' values must be bool");
         },
         else => @compileError("jsonschema " ++ where ++ " key '$vocabulary' must be a struct literal"),
     }
@@ -331,7 +330,7 @@ fn validateSchemaArray(comptime value: anytype, comptime message: []const u8) vo
                 .array => |arr| reflect.validateJsonValue(arr.child),
                 .@"struct" => |st| {
                     if (!st.is_tuple) @compileError(message);
-                    inline for (st.fields) |field| reflect.validateJsonValue(field.type);
+                    inline for (st.field_types) |FieldType| reflect.validateJsonValue(FieldType);
                 },
                 else => @compileError(message),
             },
@@ -339,7 +338,7 @@ fn validateSchemaArray(comptime value: anytype, comptime message: []const u8) vo
         },
         .@"struct" => |st| {
             if (!st.is_tuple) @compileError(message);
-            inline for (st.fields) |field| reflect.validateJsonValue(field.type);
+            inline for (st.field_types) |FieldType| reflect.validateJsonValue(FieldType);
         },
         else => @compileError(message),
     }
@@ -348,8 +347,8 @@ fn validateSchemaArray(comptime value: anytype, comptime message: []const u8) vo
 fn validateSchemaMap(comptime schemas: anytype, comptime key: []const u8, comptime where: []const u8) void {
     const Schemas = @TypeOf(schemas);
     switch (@typeInfo(Schemas)) {
-        .@"struct" => |st| inline for (st.fields) |field| {
-            reflect.validateJsonValue(field.type);
+        .@"struct" => |st| inline for (st.field_types) |FieldType| {
+            reflect.validateJsonValue(FieldType);
         },
         else => @compileError("jsonschema " ++ where ++ " key '" ++ key ++ "' must be a struct literal"),
     }
@@ -358,8 +357,8 @@ fn validateSchemaMap(comptime schemas: anytype, comptime key: []const u8, compti
 fn validateDependentRequired(comptime dependencies: anytype, comptime where: []const u8) void {
     const Dependencies = @TypeOf(dependencies);
     switch (@typeInfo(Dependencies)) {
-        .@"struct" => |st| inline for (st.fields) |field| {
-            validateStringArray(@field(dependencies, field.name), "jsonschema " ++ where ++ " key 'dependentRequired' values must be arrays of strings");
+        .@"struct" => |st| inline for (st.field_names) |field_name| {
+            validateStringArray(@field(dependencies, field_name), "jsonschema " ++ where ++ " key 'dependentRequired' values must be arrays of strings");
         },
         else => @compileError("jsonschema " ++ where ++ " key 'dependentRequired' must be a struct literal"),
     }
@@ -381,8 +380,8 @@ fn validateStringArray(comptime value: anytype, comptime message: []const u8) vo
                 },
                 .@"struct" => |st| {
                     if (!st.is_tuple) @compileError(message);
-                    inline for (st.fields) |field| {
-                        if (!reflect.isString(field.type)) @compileError(message);
+                    inline for (st.field_types) |FieldType| {
+                        if (!reflect.isString(FieldType)) @compileError(message);
                     }
                 },
                 else => @compileError(message),
@@ -391,8 +390,8 @@ fn validateStringArray(comptime value: anytype, comptime message: []const u8) vo
         },
         .@"struct" => |st| {
             if (!st.is_tuple) @compileError(message);
-            inline for (st.fields) |field| {
-                if (!reflect.isString(field.type)) @compileError(message);
+            inline for (st.field_types) |FieldType| {
+                if (!reflect.isString(FieldType)) @compileError(message);
             }
         },
         else => @compileError(message),

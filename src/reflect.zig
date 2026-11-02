@@ -25,10 +25,10 @@ fn validateTypeInner(comptime T: type, comptime stack: []const type, comptime pa
             if (un.tag_type == null) @compileError("jsonschema union schemas require union(enum)");
             if (containsType(stack, T)) return;
             const next_stack = stack ++ [_]type{T};
-            inline for (un.fields) |field| {
-                if (field.type != void) {
-                    const field_path = path ++ "." ++ field.name;
-                    validateTypeInner(field.type, next_stack, field_path);
+            inline for (un.field_names, un.field_types) |field_name, FieldType| {
+                if (FieldType != void) {
+                    const field_path = path ++ "." ++ field_name;
+                    validateTypeInner(FieldType, next_stack, field_path);
                 }
             }
         },
@@ -39,14 +39,14 @@ fn validateTypeInner(comptime T: type, comptime stack: []const type, comptime pa
             }
             if (containsType(stack, T)) return;
             const next_stack = stack ++ [_]type{T};
-            inline for (st.fields, 0..) |field, i| {
+            inline for (st.field_names, st.field_types, st.field_attrs, 0..) |field_name, FieldType, attrs, i| {
                 const field_path = if (st.is_tuple)
                     path ++ "[" ++ std.fmt.comptimePrint("{}", .{i}) ++ "]"
                 else
-                    path ++ "." ++ field.name;
-                validateTypeInner(field.type, next_stack, field_path);
-                if (field.defaultValue()) |default_value| {
-                    validateDefaultCompatible(field.type, default_value, field_path);
+                    path ++ "." ++ field_name;
+                validateTypeInner(FieldType, next_stack, field_path);
+                if (attrs.defaultValue(FieldType)) |default_value| {
+                    validateDefaultCompatible(FieldType, default_value, field_path);
                 }
             }
         },
@@ -80,8 +80,8 @@ fn validateJsonValueInner(comptime T: type, comptime stack: []const type) void {
             if (un.tag_type == null) @compileError("jsonschema union JSON values require union(enum)");
             if (containsType(stack, T)) return;
             const next_stack = stack ++ [_]type{T};
-            inline for (un.fields) |field| {
-                if (field.type != void) validateJsonValueInner(field.type, next_stack);
+            inline for (un.field_types) |FieldType| {
+                if (FieldType != void) validateJsonValueInner(FieldType, next_stack);
             }
         },
         .@"struct" => |st| {
@@ -91,7 +91,7 @@ fn validateJsonValueInner(comptime T: type, comptime stack: []const type) void {
             }
             if (containsType(stack, T)) return;
             const next_stack = stack ++ [_]type{T};
-            inline for (st.fields) |field| validateJsonValueInner(field.type, next_stack);
+            inline for (st.field_types) |FieldType| validateJsonValueInner(FieldType, next_stack);
         },
         else => unsupportedJsonValue(T),
     }
@@ -116,7 +116,7 @@ pub fn validateExamples(comptime T: type) void {
         },
         .@"struct" => |st| {
             if (!st.is_tuple) @compileError("jsonschema metadata key 'examples' must be an array");
-            inline for (st.fields) |field| validateJsonValue(field.type);
+            inline for (st.field_types) |FieldType| validateJsonValue(FieldType);
         },
         else => @compileError("jsonschema metadata key 'examples' must be an array"),
     }
@@ -195,15 +195,16 @@ pub fn isDefaultValueCompatible(comptime SchemaType: type, comptime value: anyty
 }
 
 pub fn hasStructField(comptime T: type, comptime name: []const u8) bool {
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (std.mem.eql(u8, field.name, name)) return true;
+    inline for (@typeInfo(T).@"struct".field_names) |field_name| {
+        if (std.mem.eql(u8, field_name, name)) return true;
     }
     return false;
 }
 
 pub fn structFieldType(comptime T: type, comptime name: []const u8) type {
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (std.mem.eql(u8, field.name, name)) return field.type;
+    const info = @typeInfo(T).@"struct";
+    inline for (info.field_names, info.field_types) |field_name, FieldType| {
+        if (std.mem.eql(u8, field_name, name)) return FieldType;
     }
     unreachable;
 }
@@ -334,7 +335,7 @@ fn isFinite(comptime value: anytype) bool {
     };
 }
 
-fn objectValueCompatible(comptime SchemaType: type, comptime schema_struct: std.builtin.Type.Struct, comptime value: anytype) bool {
+fn objectValueCompatible(comptime SchemaType: type, comptime schema_struct: std.lang.Type.Struct, comptime value: anytype) bool {
     const ValueType = @TypeOf(value);
     if (ValueType == SchemaType) return true;
 
@@ -344,19 +345,19 @@ fn objectValueCompatible(comptime SchemaType: type, comptime schema_struct: std.
     }
     if (value_info != .@"struct" or value_info.@"struct".is_tuple) return false;
 
-    inline for (schema_struct.fields) |schema_field| {
-        if (!@hasField(ValueType, schema_field.name)) return false;
-        if (!isDefaultValueCompatible(schema_field.type, @field(value, schema_field.name))) return false;
+    inline for (schema_struct.field_names, schema_struct.field_types) |field_name, FieldType| {
+        if (!@hasField(ValueType, field_name)) return false;
+        if (!isDefaultValueCompatible(FieldType, @field(value, field_name))) return false;
     }
-    inline for (value_info.@"struct".fields) |value_field| {
-        if (!hasStructField(SchemaType, value_field.name)) return false;
+    inline for (value_info.@"struct".field_names) |field_name| {
+        if (!hasStructField(SchemaType, field_name)) return false;
     }
     return true;
 }
 
 fn enumHasName(comptime EnumType: type, comptime name: []const u8) bool {
-    inline for (@typeInfo(EnumType).@"enum".fields) |field| {
-        if (std.mem.eql(u8, field.name, name)) return true;
+    inline for (@typeInfo(EnumType).@"enum".field_names) |field_name| {
+        if (std.mem.eql(u8, field_name, name)) return true;
     }
     return false;
 }

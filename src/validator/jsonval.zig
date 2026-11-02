@@ -239,7 +239,7 @@ test "typeMatches integer vs number" {
     try std.testing.expect(typeMatches(&g.value, "number"));
 
     // A huge integer overflows i64 -> number_string, but is still an integer.
-    const big = try std.json.parseFromSlice(Value, a, "1" ++ "0" ** 40, .{});
+    const big = try std.json.parseFromSlice(Value, a, "1" ++ @as([40]u8, @splat('0')), .{});
     defer big.deinit();
     try std.testing.expect(big.value == .number_string);
     try std.testing.expect(typeMatches(&big.value, "integer"));
@@ -247,7 +247,7 @@ test "typeMatches integer vs number" {
 
 test "multipleOfBig exact" {
     const a = std.testing.allocator;
-    try std.testing.expectEqual(@as(?bool, true), try multipleOfBig(a, "1" ++ "0" ** 30, "0.5"));
+    try std.testing.expectEqual(@as(?bool, true), try multipleOfBig(a, "1" ++ @as([30]u8, @splat('0')), "0.5"));
     try std.testing.expectEqual(@as(?bool, true), try multipleOfBig(a, "100", "0.0001"));
     try std.testing.expectEqual(@as(?bool, false), try multipleOfBig(a, "7", "2"));
     try std.testing.expectEqual(@as(?bool, true), try multipleOfBig(a, "1e3", "10"));
