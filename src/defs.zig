@@ -53,16 +53,16 @@ fn hasRecursiveSchemaInner(comptime T: type, comptime stack: []const type) bool 
             if (st.is_tuple) break :blk false;
             if (containsType(stack, T)) break :blk true;
             const next_stack = stack ++ [_]type{T};
-            inline for (st.fields) |field| {
-                if (hasRecursiveSchemaInner(field.type, next_stack)) break :blk true;
+            inline for (st.field_types) |FieldType| {
+                if (hasRecursiveSchemaInner(FieldType, next_stack)) break :blk true;
             }
             break :blk false;
         },
         .@"union" => |un| blk: {
             if (containsType(stack, T)) break :blk true;
             const next_stack = stack ++ [_]type{T};
-            inline for (un.fields) |field| {
-                if (field.type != void and hasRecursiveSchemaInner(field.type, next_stack)) break :blk true;
+            inline for (un.field_types) |FieldType| {
+                if (FieldType != void and hasRecursiveSchemaInner(FieldType, next_stack)) break :blk true;
             }
             break :blk false;
         },
@@ -82,15 +82,15 @@ fn collectDefsInSchema(comptime T: type, comptime defs: []const type, comptime s
             if (containsType(stack, T)) break :blk defs;
             const next_stack = stack ++ [_]type{T};
             var out = defs;
-            inline for (st.fields) |field| out = collectDefsFromField(field.type, out, next_stack);
+            inline for (st.field_types) |FieldType| out = collectDefsFromField(FieldType, out, next_stack);
             break :blk out;
         },
         .@"union" => |un| blk: {
             if (containsType(stack, T)) break :blk defs;
             const next_stack = stack ++ [_]type{T};
             var out = defs;
-            inline for (un.fields) |field| {
-                if (field.type != void) out = collectDefsFromField(field.type, out, next_stack);
+            inline for (un.field_types) |FieldType| {
+                if (FieldType != void) out = collectDefsFromField(FieldType, out, next_stack);
             }
             break :blk out;
         },

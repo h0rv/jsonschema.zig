@@ -61,26 +61,26 @@ fn validateInner(comptime T: type, input: T, writer: anytype, comptime options: 
             ok = try validateObject(T, input, writer, options, path, field_meta) and ok;
             if (comptime reflect.isStringMap(T)) return ok;
             if (st.is_tuple) {
-                inline for (st.fields, 0..) |field, i| {
-                    ok = try validateInner(field.type, @field(input, field.name), writer, options, path ++ "[" ++ std.fmt.comptimePrint("{}", .{i}) ++ "]", .{}) and ok;
+                inline for (st.field_names, st.field_types, 0..) |field_name, FieldType, i| {
+                    ok = try validateInner(FieldType, @field(input, field_name), writer, options, path ++ "[" ++ std.fmt.comptimePrint("{}", .{i}) ++ "]", .{}) and ok;
                 }
             } else {
-                inline for (st.fields) |field| {
-                    if (comptime meta.fieldOmitted(T, field.name)) continue;
-                    const field_path = comptime path ++ "." ++ meta.schemaFieldName(T, field.name, options.field_naming);
-                    if (comptime meta.hasFieldMetadata(T, field.name)) {
-                        ok = try validateInner(field.type, @field(input, field.name), writer, options, field_path, meta.fieldMetadata(T, field.name)) and ok;
+                inline for (st.field_names, st.field_types) |field_name, FieldType| {
+                    if (comptime meta.fieldOmitted(T, field_name)) continue;
+                    const field_path = comptime path ++ "." ++ meta.schemaFieldName(T, field_name, options.field_naming);
+                    if (comptime meta.hasFieldMetadata(T, field_name)) {
+                        ok = try validateInner(FieldType, @field(input, field_name), writer, options, field_path, meta.fieldMetadata(T, field_name)) and ok;
                     } else {
-                        ok = try validateInner(field.type, @field(input, field.name), writer, options, field_path, .{}) and ok;
+                        ok = try validateInner(FieldType, @field(input, field_name), writer, options, field_path, .{}) and ok;
                     }
                 }
             }
         },
         .@"union" => |un| {
             const tag_name = @tagName(input);
-            inline for (un.fields) |field| {
-                if (std.mem.eql(u8, field.name, tag_name) and field.type != void) {
-                    ok = try validateInner(field.type, @field(input, field.name), writer, options, path ++ "." ++ field.name, .{}) and ok;
+            inline for (un.field_names, un.field_types) |field_name, FieldType| {
+                if (std.mem.eql(u8, field_name, tag_name) and FieldType != void) {
+                    ok = try validateInner(FieldType, @field(input, field_name), writer, options, path ++ "." ++ field_name, .{}) and ok;
                 }
             }
         },
@@ -175,8 +175,7 @@ fn validateObject(comptime T: type, input: T, writer: anytype, comptime options:
 
 fn validateDependentRequired(comptime T: type, input: T, writer: anytype, comptime options: Options, comptime path: []const u8, comptime dependencies: anytype) !bool {
     var ok = true;
-    inline for (@typeInfo(@TypeOf(dependencies)).@"struct".fields) |dependency| {
-        const property_name = dependency.name;
+    inline for (@typeInfo(@TypeOf(dependencies)).@"struct".field_names) |property_name| {
         if (propertyPresent(T, input, options, property_name)) {
             ok = try validateDependentRequiredList(T, input, writer, options, path, property_name, @field(dependencies, property_name)) and ok;
         }
@@ -198,15 +197,15 @@ fn validateDependentRequiredList(comptime T: type, input: T, writer: anytype, co
                 .array => inline for (dependencies.*) |dependency| {
                     ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(dependency)) and ok;
                 },
-                .@"struct" => |st| inline for (st.fields) |field| {
-                    ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(@field(dependencies.*, field.name))) and ok;
+                .@"struct" => |st| inline for (st.field_names) |field_name| {
+                    ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(@field(dependencies.*, field_name))) and ok;
                 },
                 else => unreachable,
             },
             else => unreachable,
         },
-        .@"struct" => |st| inline for (st.fields) |field| {
-            ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(@field(dependencies, field.name))) and ok;
+        .@"struct" => |st| inline for (st.field_names) |field_name| {
+            ok = try validateDependencyName(T, input, writer, options, path, property_name, stringValue(@field(dependencies, field_name))) and ok;
         },
         else => unreachable,
     }
@@ -220,12 +219,13 @@ fn validateDependencyName(comptime T: type, input: T, writer: anytype, comptime 
 }
 
 fn propertyPresent(comptime T: type, input: T, comptime options: Options, comptime property_name: []const u8) bool {
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (comptime meta.fieldOmitted(T, field.name)) continue;
-        const emitted = comptime meta.schemaFieldName(T, field.name, options.field_naming);
+    const info = @typeInfo(T).@"struct";
+    inline for (info.field_names, info.field_types) |field_name, FieldType| {
+        if (comptime meta.fieldOmitted(T, field_name)) continue;
+        const emitted = comptime meta.schemaFieldName(T, field_name, options.field_naming);
         if (comptime std.mem.eql(u8, emitted, property_name)) {
-            return switch (@typeInfo(field.type)) {
-                .optional => @field(input, field.name) != null,
+            return switch (@typeInfo(FieldType)) {
+                .optional => @field(input, field_name) != null,
                 else => true,
             };
         }
@@ -236,8 +236,8 @@ fn propertyPresent(comptime T: type, input: T, comptime options: Options, compti
 fn objectPropertyCount(comptime T: type, input: T) usize {
     if (comptime reflect.isStringMap(T)) return input.count();
     comptime var count: usize = 0;
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (comptime !meta.fieldOmitted(T, field.name)) count += 1;
+    inline for (@typeInfo(T).@"struct".field_names) |field_name| {
+        if (comptime !meta.fieldOmitted(T, field_name)) count += 1;
     }
     return count;
 }
@@ -341,19 +341,19 @@ fn jsonValueEquals(comptime T: type, a: T, b: T) bool {
         },
         .@"struct" => |st| blk: {
             if (comptime reflect.isStringMap(T)) break :blk false;
-            inline for (st.fields) |field| {
-                if (comptime !st.is_tuple and meta.fieldOmitted(T, field.name)) continue;
-                if (!jsonValueEquals(field.type, @field(a, field.name), @field(b, field.name))) break :blk false;
+            inline for (st.field_names, st.field_types) |field_name, FieldType| {
+                if (comptime !st.is_tuple and meta.fieldOmitted(T, field_name)) continue;
+                if (!jsonValueEquals(FieldType, @field(a, field_name), @field(b, field_name))) break :blk false;
             }
             break :blk true;
         },
         .@"union" => |un| blk: {
             if (std.meta.activeTag(a) != std.meta.activeTag(b)) break :blk false;
             const tag_name = @tagName(a);
-            inline for (un.fields) |field| {
-                if (std.mem.eql(u8, field.name, tag_name)) {
-                    if (field.type == void) break :blk true;
-                    break :blk jsonValueEquals(field.type, @field(a, field.name), @field(b, field.name));
+            inline for (un.field_names, un.field_types) |field_name, FieldType| {
+                if (std.mem.eql(u8, field_name, tag_name)) {
+                    if (FieldType == void) break :blk true;
+                    break :blk jsonValueEquals(FieldType, @field(a, field_name), @field(b, field_name));
                 }
             }
             break :blk false;
