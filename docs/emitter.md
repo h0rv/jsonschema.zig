@@ -32,8 +32,15 @@ const User = struct {
         .title = "User",
         .description = "A user profile.",
         .fields = .{
-            .name = .{ .description = "The user's full name.", .minLength = 1 },
-            .age = .{ .description = "Age in years.", .minimum = 0, .maximum = 130 },
+            .name = .{
+                .description = "The user's full name.",
+                .minLength = 1,
+            },
+            .age = .{
+                .description = "Age in years.",
+                .minimum = 0,
+                .maximum = 130,
+            },
             .email = .{ .format = "email" },
         },
     };
@@ -155,7 +162,13 @@ pub const jsonschema = .{
     .propertyNames = .{ .pattern = "^[a-z_]+$" },
     .allOf = .{.{ .type = "object" }},
     .discriminator = "kind", // opt into flattened discriminated-object union schema
-    .examples = .{.{ .name = "Ada", .age = 42, .email = null }},
+    .examples = .{
+        .{
+            .name = "Ada",
+            .age = 42,
+            .email = null,
+        },
+    },
 };
 ```
 
@@ -164,11 +177,27 @@ Field metadata:
 ```zig
 pub const jsonschema = .{
     .fields = .{
-        .name = .{ .name = "fullName", .@"$comment" = "Display name.", .minLength = 1, .maxLength = 128 },
-        .age = .{ .minimum = 0, .maximum = 130 },
-        .email = .{ .format = "email", .contentMediaType = "text/plain" },
+        .name = .{
+            .name = "fullName",
+            .@"$comment" = "Display name.",
+            .minLength = 1,
+            .maxLength = 128,
+        },
+        .age = .{
+            .minimum = 0,
+            .maximum = 130,
+        },
+        .email = .{
+            .format = "email",
+            .contentMediaType = "text/plain",
+        },
         .kind = .{ .@"const" = "user" },
-        .tags = .{ .contains = .{ .@"const" = "admin" }, .minContains = 1 },
+        .tags = .{
+            .contains = .{
+                .@"const" = "admin",
+            },
+            .minContains = 1,
+        },
         .nickname = .{ .required = false },
         .internal_id = .{ .omit = true },
     },
@@ -206,8 +235,13 @@ object. Scalar and tuple payload variants use a generated `value` field.
 parsing directly with `std.json`.
 
 ```zig
-const Search = struct { query: []const u8 };
-const Finish = struct { answer: []const u8 };
+const Search = struct {
+    query: []const u8,
+};
+
+const Finish = struct {
+    answer: []const u8,
+};
 
 const Action = union(enum) {
     search: Search,
@@ -277,7 +311,11 @@ parse the wrapper object and unwrap the field.
 
 ```zig
 const schema = try jsonschema.stringifyAlloc([]const Item, allocator, .{
-    .root_wrapper = .{ .object = .{ .field_name = "items" } },
+    .root_wrapper = .{
+        .object = .{
+            .field_name = "items",
+        },
+    },
 });
 ```
 

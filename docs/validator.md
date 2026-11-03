@@ -24,16 +24,23 @@ const jsonschema = @import("jsonschema");
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
 
-    const schema = try std.json.parseFromSlice(std.json.Value, gpa,
-        \\{"type":"object","required":["name"],
-        \\ "properties":{"name":{"type":"string","minLength":1},
-        \\               "age":{"type":"integer","minimum":0}}}
-    , .{});
+    const schema_json =
+        \\{
+        \\  "type": "object",
+        \\  "required": ["name"],
+        \\  "properties": {
+        \\    "name": {"type": "string", "minLength": 1},
+        \\    "age": {"type": "integer", "minimum": 0}
+        \\  }
+        \\}
+    ;
+    const schema = try std.json.parseFromSlice(std.json.Value, gpa, schema_json, .{});
     defer schema.deinit();
 
-    const instance = try std.json.parseFromSlice(std.json.Value, gpa,
-        \\{"name":"Ada","age":42}
-    , .{});
+    const instance_json =
+        \\{"name": "Ada", "age": 42}
+    ;
+    const instance = try std.json.parseFromSlice(std.json.Value, gpa, instance_json, .{});
     defer instance.deinit();
 
     const ok = try jsonschema.isValid(gpa, &schema.value, &instance.value, .{});
@@ -86,7 +93,10 @@ try v.setRootSchema(&schema.value);
 
 var errors: std.ArrayListUnmanaged(jsonschema.ValidationError) = .empty;
 const ok = try v.validate(&instance.value, &errors);
-for (errors.items) |e| std.debug.print("{s}: {s}\n", .{ e.instance_path, e.message });
+
+for (errors.items) |err| {
+    std.debug.print("{s}: {s}\n", .{ err.instance_path, err.message });
+}
 ```
 
 ## Options

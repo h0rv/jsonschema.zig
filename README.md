@@ -23,7 +23,11 @@ zig fetch --save=jsonschema git+https://github.com/h0rv/jsonschema.zig.git
 Then wire the module into your `build.zig`:
 
 ```zig
-const dep = b.dependency("jsonschema", .{ .target = target, .optimize = optimize });
+const dep = b.dependency("jsonschema", .{
+    .target = target,
+    .optimize = optimize,
+});
+
 exe.root_module.addImport("jsonschema", dep.module("jsonschema"));
 ```
 
@@ -39,16 +43,23 @@ const jsonschema = @import("jsonschema");
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
 
-    const schema = try std.json.parseFromSlice(std.json.Value, gpa,
-        \\{"type":"object","required":["name"],
-        \\ "properties":{"name":{"type":"string","minLength":1},
-        \\               "age":{"type":"integer","minimum":0}}}
-    , .{});
+    const schema_json =
+        \\{
+        \\  "type": "object",
+        \\  "required": ["name"],
+        \\  "properties": {
+        \\    "name": {"type": "string", "minLength": 1},
+        \\    "age": {"type": "integer", "minimum": 0}
+        \\  }
+        \\}
+    ;
+    const schema = try std.json.parseFromSlice(std.json.Value, gpa, schema_json, .{});
     defer schema.deinit();
 
-    const instance = try std.json.parseFromSlice(std.json.Value, gpa,
-        \\{"name":"Ada","age":42}
-    , .{});
+    const instance_json =
+        \\{"name": "Ada", "age": 42}
+    ;
+    const instance = try std.json.parseFromSlice(std.json.Value, gpa, instance_json, .{});
     defer instance.deinit();
 
     const ok = try jsonschema.isValid(gpa, &schema.value, &instance.value, .{});
@@ -68,7 +79,11 @@ const User = struct {
 
     pub const jsonschema = .{
         .title = "User",
-        .fields = .{ .name = .{ .minLength = 1 } },
+        .fields = .{
+            .name = .{
+                .minLength = 1,
+            },
+        },
     };
 };
 
